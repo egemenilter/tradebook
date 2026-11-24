@@ -247,6 +247,10 @@ function multiLineChart(
       band.setAttribute("width", (j === pts.length - 1 ? w - pad - bandX(j) : bandX(j + 1) - bandX(j)).toFixed(1));
       band.setAttribute("height", String(h - 2 * pad));
       band.setAttribute("class", "band");
+      // Filled transparent in the markup too — an SVG rect defaults to black
+      // paint, and the CSS rule must not be the only thing keeping it away.
+      band.setAttribute("fill", "transparent");
+      band.setAttribute("pointer-events", "all");
       const title = document.createElementNS(svgNS, "title");
       title.textContent = `${p.date} · ${fmt(cum[j])}`;
       band.appendChild(title);
