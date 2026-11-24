@@ -54,52 +54,31 @@ function streakLabel(series: Trade[]): string {
   return `${i}${first ? "W" : "L"} streak`;
 }
 
-/** A small cumulative-net line, in the strategy's own colours. */
-function cumulativeChart(el: HTMLElement, series: Trade[]): void {
-  const nets = series.map((t) => netPnl(t));
-  if (nets.length < 2) {
-    el.createSpan({
-      cls: "tj-strat-chart-empty",
-      text: nets.length === 1 ? "One trade — a curve needs two." : "",
-    });
-    return;
-  }
-  const cum: number[] = [];
-  let acc = 0;
-  for (const n of nets) {
-    acc += n;
-    cum.push(acc);
-  }
-  const w = 320;
-  const h = 96;
-  const pad = 5;
-  const min = Math.min(0, ...cum);
-  const max = Math.max(0, ...cum);
-  const span = max - min || 1;
-  const x = (i: number): number => pad + (i * (w - 2 * pad)) / (cum.length - 1);
-  const y = (v: number): number => pad + (h - 2 * pad) * (1 - (v - min) / span);
-  // SVG elements come from the DOM's own namespace factory: Obsidian's typed
-  // createEl knows HTML, not the SVG tags.
-  const svgNS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(svgNS, "svg");
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-  svg.setAttribute("preserveAspectRatio", "none");
-  svg.setAttribute("class", `tj-strat-chart ${toneClass(cum[cum.length - 1]) === "pos" ? "is-pos" : "is-neg"}`);
-  const zeroLine = document.createElementNS(svgNS, "line");
-  zeroLine.setAttribute("x1", String(pad));
-  zeroLine.setAttribute("x2", String(w - pad));
-  zeroLine.setAttribute("y1", y(0).toFixed(1));
-  zeroLine.setAttribute("y2", y(0).toFixed(1));
-  svg.appendChild(zeroLine);
-  const polyline = document.createElementNS(svgNS, "polyline");
-  polyline.setAttribute("points", cum.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" "));
-  svg.appendChild(polyline);
-  el.appendChild(svg);
-}
+/** Eight distinguishable line colours — one per strategy on the overview. */
+const LINE_COLORS = ["#4a9eda", "#d98a4a", "#3fb96f", "#c96fd9", "#e2c044", "#5bc8c8", "#e2699a", "#8aa2f0"];
 
-/** Two cumulative lines on one axis — the compare page's chart. */
-function compareChart(el: HTMLElement, seriesList: Array<{ series: Trade[]; cls: string }>): void {
-  const usable = seriesList.filter((s) => s.series.length >= 2);
+/**
+ * N cumulative lines on one axis. `value` picks the money a trade carries:
+ * net in dollars, or its R multiple when the chart is read in R.
+ */
+function multiLineChart(
+  el: HTMLElement,
+  entries: Array<{ series: Trade[]; cls?: string; value?: (t: Trade) => number | null }>,
+  valueOf: (t: Trade) => number | null = netPnl
+): void {
+  const usable = entries
+    .map((e) => {
+      const values: number[] = [];
+      for (const t of e.series) {
+        const v = (e.value ?? valueOf)(t);
+        // A trade the chart's unit cannot price (no stop → no R) just does not
+        // sit on the curve; it does not erase the curve for everyone else.
+        if (v === null || !Number.isFinite(v)) continue;
+        values.push(v);
+      }
+      return { cls: e.cls, values };
+    })
+    .filter((e) => e.values.length >= 2);
   if (!usable.length) {
     el.createSpan({ cls: "tj-strat-chart-empty", text: "A curve needs two trades." });
     return;
@@ -107,16 +86,7 @@ function compareChart(el: HTMLElement, seriesList: Array<{ series: Trade[]; cls:
   const w = 320;
   const h = 96;
   const pad = 5;
-  const cums = usable.map((s) => {
-    const out: number[] = [];
-    let acc = 0;
-    for (const t of s.series) {
-      acc += netPnl(t);
-      out.push(acc);
-    }
-    return out;
-  });
-  const flat = cums.flat();
+  const flat = usable.flatMap((e) => e.values);
   const min = Math.min(0, ...flat);
   const max = Math.max(0, ...flat);
   const span = max - min || 1;
@@ -132,13 +102,17 @@ function compareChart(el: HTMLElement, seriesList: Array<{ series: Trade[]; cls:
   zeroLine.setAttribute("y1", y(0).toFixed(1));
   zeroLine.setAttribute("y2", y(0).toFixed(1));
   svg.appendChild(zeroLine);
-  usable.forEach((s, i) => {
-    const cum = cums[i];
+  usable.forEach((e, i) => {
+    const cum: number[] = [];
+    let acc = 0;
+    for (const v of e.values) {
+      acc += v;
+      cum.push(acc);
+    }
     const x = (j: number): number => pad + (j * (w - 2 * pad)) / (cum.length - 1);
     const polyline = document.createElementNS(svgNS, "polyline");
     polyline.setAttribute("points", cum.map((v, j) => `${x(j).toFixed(1)},${y(v).toFixed(1)}`).join(" "));
-    polyline.setAttribute("class", `tj-strat-chart-line ${s.cls}`.trim());
-    polyline.setAttribute("data-line", String(i));
+    polyline.setAttribute("class", `tj-strat-chart-line lc${i % LINE_COLORS.length}`);
     svg.appendChild(polyline);
   });
   el.appendChild(svg);
@@ -163,6 +137,8 @@ export class SetupsView extends ItemView {
   private period: "all" | "month" | "year" = "all";
   /** The other strategy shown beside this one, when comparing. */
   private compareWith: string | null = null;
+  /** The detail chart's unit: dollars or R multiples. */
+  private chartMode: "usd" | "r" = "usd";
 
   constructor(leaf: WorkspaceLeaf, plugin: TradebookPlugin) {
     super(leaf);
@@ -370,6 +346,32 @@ export class SetupsView extends ItemView {
       for (const s of registered) this.renderCard(grid, s.name, stats, (el) => (this.focusTarget = el));
     }
 
+    // ---- Cumulative net, one line per strategy ----
+    const charted = registered
+      .map((s) => ({ name: s.name, series: stats.get(s.name.toLowerCase())?.series ?? [] }))
+      .filter((s) => s.series.length >= 2);
+    if (charted.length) {
+      const chartCard = main.createDiv({ cls: "tj-strat-card tj-strat-chartcard" });
+      const chartHead = chartCard.createDiv({ cls: "tj-strat-card-head" });
+      chartHead.createDiv({ cls: "tj-strat-card-title", text: "Cumulative net by strategy" });
+      const chartEl = chartCard.createDiv({ cls: "tj-strat-chartbox" });
+      multiLineChart(
+        chartEl,
+        charted.map((s) => ({ series: s.series, cls: "" }))
+      );
+      const legend = chartCard.createDiv({ cls: "tj-strat-legend" });
+      charted.forEach((s, i) => {
+        const item = legend.createSpan({ cls: "tj-strat-legend-item" });
+        item.createSpan({ cls: `tj-strat-legend-dot lc${i % LINE_COLORS.length}`, attr: { "aria-hidden": "true" } });
+        item.createSpan({ text: s.name });
+        item.addEventListener("click", () => {
+          this.selected = s.name;
+          this.rulesEditing = false;
+          void this.render();
+        });
+      });
+    }
+
     // ---- Names the trades carry that are not registered ----
     if (untracked.length) {
       const sub = main.createDiv({ cls: "tj-strat-card tj-strat-untracked-card" });
@@ -555,11 +557,67 @@ export class SetupsView extends ItemView {
     stat("Avg R", g.n ? fmtAvgR(g.rSum, g.rN) : "—", g.rN ? toneClass(g.rSum / (g.rN || 1)) : "");
     stat("Missed", g.missedN ? `${g.missedN} · ${fmtMoney(g.missedPnl)}` : "0", g.missedN ? "is-hypothetical" : "");
 
-    // ---- Cumulative net chart ----
+    // ---- Cumulative chart, in dollars or in R ----
     const chartCard = main.createDiv({ cls: "tj-strat-card tj-strat-chartcard" });
-    chartCard.createDiv({ cls: "tj-strat-card-title", text: "Cumulative net" });
+    const chartHead = chartCard.createDiv({ cls: "tj-strat-card-head" });
+    chartHead.createDiv({ cls: "tj-strat-card-title", text: "Cumulative" });
+    const modeSeg = chartHead.createDiv({ cls: "tj-strat-chart-toggle" });
+    for (const [id, label] of [["usd", "$"], ["r", "R"]] as const) {
+      const b = modeSeg.createEl("button", {
+        cls: "tj-add-seg-btn" + (this.chartMode === id ? " on" : ""),
+        text: label,
+        attr: { type: "button" },
+      });
+      b.addEventListener("click", () => {
+        if (this.chartMode === id) return;
+        this.chartMode = id;
+        void this.render();
+      });
+    }
     const chartEl = chartCard.createDiv({ cls: "tj-strat-chartbox" });
-    cumulativeChart(chartEl, g.series);
+    const valueOf = this.chartMode === "r" ? (t: Trade) => tradeR(t) : (t: Trade) => netPnl(t);
+    multiLineChart(chartEl, [{ series: g.series, value: valueOf }], valueOf);
+    if (this.chartMode === "r") {
+      chartEl.setAttr("title", "Cumulative R — trades without a recorded stop cannot sit on an R curve, so they are left out.");
+    }
+
+    // ---- Outcomes: one bar per trade, tallest = biggest move ----
+    if (g.series.length) {
+      const ocCard = main.createDiv({ cls: "tj-strat-card" });
+      ocCard.createDiv({ cls: "tj-strat-card-title", text: "Outcomes" });
+      const strip = ocCard.createDiv({ cls: "tj-strat-outcome" });
+      const maxAbs = Math.max(...g.series.map((t) => Math.abs(netPnl(t))), 1);
+      for (const t of g.series) {
+        const net = netPnl(t);
+        const bar = strip.createDiv({ cls: `tj-strat-outcome-bar ${toneClass(net)}`.trim() });
+        bar.style.height = `${Math.max(3, Math.round((Math.abs(net) / maxAbs) * 30))}px`;
+        bar.setAttr("title", `${t.date} · ${t.symbol} · ${fmtMoney(net)}`);
+      }
+    }
+
+    // ---- By symbol: where the strategy actually works ----
+    const syms = new Map<string, { n: number; net: number }>();
+    for (const t of g.series) {
+      const k = (t.symbol || "").toUpperCase() || "—";
+      const s = syms.get(k) ?? { n: 0, net: 0 };
+      s.n += 1;
+      s.net += netPnl(t);
+      syms.set(k, s);
+    }
+    if (syms.size > 1) {
+      const symCard = main.createDiv({ cls: "tj-strat-card" });
+      symCard.createDiv({ cls: "tj-strat-card-title", text: "By symbol" });
+      const rowsEl = symCard.createDiv({ cls: "tj-strat-symbols" });
+      const symMax = Math.max(...[...syms.values()].map((s) => Math.abs(s.net)), 1);
+      for (const [sym, s] of [...syms.entries()].sort((x, y) => y[1].net - x[1].net)) {
+        const row = rowsEl.createDiv({ cls: "tj-strat-symbol-row" });
+        row.createSpan({ cls: "tj-strat-symbol-name", text: sym });
+        const barWrap = row.createDiv({ cls: "tj-strat-symbol-barwrap" });
+        const bar = barWrap.createDiv({ cls: `tj-strat-symbol-bar ${toneClass(s.net)}`.trim() });
+        bar.style.width = `${Math.round((Math.abs(s.net) / symMax) * 100)}%`;
+        row.createSpan({ cls: `tj-strat-symbol-val ${toneClass(s.net)}`.trim(), text: `${s.n} · ${fmtMoney(s.net)}` });
+      }
+    }
 
     // ---- Rules ----
     const rulesCard = main.createDiv({ cls: "tj-strat-card tj-strat-rulescard" });
@@ -692,9 +750,9 @@ export class SetupsView extends ItemView {
     column(b, labelOf(otherName));
 
     const chartEl = card.createDiv({ cls: "tj-strat-chartbox" });
-    compareChart(chartEl, [
-      { series: a.series, cls: "is-a" },
-      { series: b.series, cls: "is-b" },
+    multiLineChart(chartEl, [
+      { series: a.series },
+      { series: b.series },
     ]);
   }
 

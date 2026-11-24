@@ -14023,6 +14023,124 @@ justify-content: space-between;
 .tj-strat-chart .tj-strat-chart-line.is-a { stroke: #4a9eda; }
 .tj-strat-chart .tj-strat-chart-line.is-b { stroke: #d98a4a; }
 
+/* ---- Multi-line palette (overview + detail charts) ---- */
+.tj-strat-chart .tj-strat-chart-line.lc0 { stroke: #4a9eda; }
+.tj-strat-chart .tj-strat-chart-line.lc1 { stroke: #d98a4a; }
+.tj-strat-chart .tj-strat-chart-line.lc2 { stroke: #3fb96f; }
+.tj-strat-chart .tj-strat-chart-line.lc3 { stroke: #c96fd9; }
+.tj-strat-chart .tj-strat-chart-line.lc4 { stroke: #e2c044; }
+.tj-strat-chart .tj-strat-chart-line.lc5 { stroke: #5bc8c8; }
+.tj-strat-chart .tj-strat-chart-line.lc6 { stroke: #e2699a; }
+.tj-strat-chart .tj-strat-chart-line.lc7 { stroke: #8aa2f0; }
+
+.tj-strat-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+}
+
+.tj-strat-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  cursor: pointer;
+  color: var(--text-muted, #9aa0a6);
+}
+
+.tj-strat-legend-item:hover {
+  color: var(--text-normal, inherit);
+}
+
+.tj-strat-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ---- Detail chart unit toggle ---- */
+
+.tj-strat-chart-toggle {
+  display: flex;
+  border: 1px solid color-mix(in srgb, var(--text-muted, #9aa0a6) 22%, transparent);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tj-strat-chart-toggle .tj-add-seg-btn {
+  border: none;
+  border-radius: 0;
+  font-size: 11px;
+  padding: 3px 10px;
+}
+
+/* ---- Outcomes: one bar per trade ---- */
+
+.tj-strat-outcome {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-height: 34px;
+  margin-top: 6px;
+}
+
+.tj-strat-outcome-bar {
+  flex: 1 1 0;
+  min-width: 3px;
+  border-radius: 2px 2px 0 0;
+}
+
+.tj-strat-outcome-bar.pos { background: #3fb96f; }
+.tj-strat-outcome-bar.neg { background: #d9534f; }
+
+/* ---- By symbol ---- */
+
+.tj-strat-symbols {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.tj-strat-symbol-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.tj-strat-symbol-name {
+  min-width: 64px;
+  font-weight: 600;
+}
+
+.tj-strat-symbol-barwrap {
+  flex: 1;
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text-muted, #9aa0a6) 10%, transparent);
+  overflow: hidden;
+}
+
+.tj-strat-symbol-bar {
+  height: 100%;
+  border-radius: 5px;
+}
+
+.tj-strat-symbol-bar.pos { background: #3fb96f; }
+.tj-strat-symbol-bar.neg { background: #d9534f; }
+
+.tj-strat-symbol-val {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tj-strat-symbol-val.pos, .tj-strat-symbol-bar.pos { }
+.tj-strat-symbol-val.pos { color: #3fb96f; }
+.tj-strat-symbol-val.neg { color: #d9534f; }
+
 /* ---- Missed widget on Home ---- */
 
 .tj-missed-total {
