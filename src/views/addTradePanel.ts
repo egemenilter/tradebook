@@ -508,9 +508,9 @@ export class AddTradePanel {
       const qty = t.quantity || 1;
       const multiple = exitDrafts.length > 1;
       const quantities = exitDrafts.map((draft) => (multiple ? Number(draft.quantity) : qty));
-      const validQuantities = quantities.every((value) => Number.isSafeInteger(value) && value > 0);
+      const validQuantities = quantities.every((value) => Number.isFinite(value) && value > 0);
       const exitQty = quantities.reduce(
-        (sum, value) => sum + (Number.isSafeInteger(value) && value > 0 ? value : 0),
+        (sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0),
         0,
       );
       const exitValues = exitDrafts.map((draft) => Number.parseFloat(draft.price));
@@ -524,13 +524,13 @@ export class AddTradePanel {
       if (multiple) {
         exitSummary.setText(
           quantityMatches
-            ? `Exit quantities match the trade size (${exitQty} contracts).`
+            ? `Exit quantities match the trade size (${exitQty}).`
             : !validQuantities
-              ? `Enter a whole-contract quantity for every exit (${exitQty} / ${qty} assigned).`
-              : `Exit quantities: ${exitQty} / ${qty} contracts — they must match the trade size.`,
+              ? `Enter a quantity for every exit (${exitQty} / ${qty} assigned).`
+              : `Exit quantities: ${exitQty} / ${qty} — they must match the trade size.`,
         );
       } else {
-        exitSummary.setText(`All ${qty} contract${qty === 1 ? "" : "s"} close on this exit.`);
+        exitSummary.setText(`All ${qty} close on this exit.`);
       }
       addExitButton.disabled = qty <= exitDrafts.length;
       if (hasActualPrices) {
@@ -1032,8 +1032,8 @@ export class AddTradePanel {
         new Notice("Pick an account and a symbol.");
         return;
       }
-      if (!(Number.isSafeInteger(t.quantity) && t.quantity > 0) || !(t.entryPrice > 0)) {
-        new Notice("Enter a whole-contract quantity and a valid entry price.");
+      if (!(Number.isFinite(t.quantity) && t.quantity > 0) || !(t.entryPrice > 0)) {
+        new Notice("Enter a quantity and a valid entry price.");
         return;
       }
       const drafts = this.exitsFor(t);
@@ -1049,15 +1049,15 @@ export class AddTradePanel {
       }
       if (multiple) {
         if (drafts.length > t.quantity) {
-          new Notice("Each exit needs at least one contract; remove an exit row or increase the trade quantity.");
+          new Notice("Each exit needs a quantity; remove an exit row or increase the trade quantity.");
           return;
         }
-        if (exits.some((exit) => !Number.isSafeInteger(exit.quantity) || exit.quantity <= 0)) {
-          new Notice("Enter a whole-contract quantity for every actual exit.");
+        if (exits.some((exit) => !(Number.isFinite(exit.quantity) && exit.quantity >= 0.01))) {
+          new Notice("Enter a quantity for every actual exit.");
           return;
         }
         const exitQuantity = exits.reduce((sum, exit) => sum + exit.quantity, 0);
-        if (exitQuantity !== t.quantity) {
+        if (Math.round(exitQuantity * 100) !== Math.round(t.quantity * 100)) {
           new Notice(`Exit quantities total ${exitQuantity}; they must equal the trade quantity of ${t.quantity}.`);
           return;
         }

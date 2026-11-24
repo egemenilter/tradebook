@@ -25,8 +25,11 @@ export function isManualClock(value: string): boolean {
  * each row must carry a time so TP ordering is based on what happened.
  */
 export function buildManualExitFills(trade: Trade, exits: readonly ManualExitFillInput[], allowSingle = false): ManualExitFillResult {
-  if (!Number.isSafeInteger(trade.quantity) || trade.quantity < (allowSingle ? 1 : 2)) {
-    return { ok: false, error: "A multiple-exit trade needs at least two whole contracts." };
+  if (!(Number.isFinite(trade.quantity) && trade.quantity > 0)) {
+    return { ok: false, error: "The trade needs a quantity." };
+  }
+  if (!allowSingle && trade.quantity < 0.02) {
+    return { ok: false, error: "A multiple-exit trade needs a size two exits can split." };
   }
   if (!(Number.isFinite(trade.entryPrice) && trade.entryPrice > 0)) {
     return { ok: false, error: "Enter a valid entry price before adding actual exits." };
@@ -37,11 +40,11 @@ export function buildManualExitFills(trade: Trade, exits: readonly ManualExitFil
   if (exits.length < (allowSingle ? 1 : 2)) {
     return { ok: false, error: "Add at least two actual exits to use multiple-exit tracking." };
   }
-  if (exits.length > trade.quantity) {
-    return { ok: false, error: "Each exit needs at least one contract; there are more exit rows than contracts." };
+  if (exits.length * 0.01 > trade.quantity) {
+    return { ok: false, error: "Each exit needs a quantity; there are more exit rows than the trade size covers." };
   }
-  if (exits.some((exit) => !Number.isSafeInteger(exit.quantity) || exit.quantity <= 0)) {
-    return { ok: false, error: "Enter a whole-contract quantity for every actual exit." };
+  if (exits.some((exit) => !(Number.isFinite(exit.quantity) && exit.quantity >= 0.01))) {
+    return { ok: false, error: "Enter a quantity for every actual exit." };
   }
   if (exits.some((exit) => !Number.isFinite(exit.price) || exit.price <= 0)) {
     return { ok: false, error: "Enter a valid price for every actual exit." };
@@ -51,7 +54,7 @@ export function buildManualExitFills(trade: Trade, exits: readonly ManualExitFil
   }
 
   const exitQuantity = exits.reduce((sum, exit) => sum + exit.quantity, 0);
-  if (exitQuantity !== trade.quantity) {
+  if (Math.round(exitQuantity * 100) !== Math.round(trade.quantity * 100)) {
     return {
       ok: false,
       error: `Exit quantities total ${exitQuantity}; they must equal the trade quantity of ${trade.quantity}.`,
