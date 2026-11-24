@@ -236,6 +236,9 @@ function multiLineChart(
     line.setAttribute("class", "tj-strat-chart-line");
     line.setAttribute("style", `stroke: ${color}`);
     line.setAttribute("vector-effect", "non-scaling-stroke");
+    // A stroked path also FILLS its own outline (start-to-end chord closed)
+    // unless fill is explicitly none — that chord fill was the black wedge.
+    line.setAttribute("fill", "none");
     svg.appendChild(line);
     // One hover band per trade: names its day and the running total on hover,
     // and a band never distorts the way a stretched dot would.

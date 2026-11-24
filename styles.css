@@ -13900,7 +13900,8 @@ justify-content: space-between;
   vector-effect: non-scaling-stroke;
 }
 
-.tj-strat-chart polyline {
+.tj-strat-chart polyline,
+.tj-strat-chart path.tj-strat-chart-line {
   fill: none;
   stroke-width: 2;
   stroke-linejoin: round;
