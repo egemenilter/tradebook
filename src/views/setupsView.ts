@@ -57,6 +57,44 @@ function streakLabel(series: Trade[]): string {
 /** Chart drawing state — ids of gradients must be unique per document. */
 let chartSeq = 0;
 
+/**
+ * A smooth curve through the points that never overshoots: monotone cubic
+ * interpolation — the same family of curve a proper chart library draws.
+ * Flat stays flat, a peak stays a peak; the curve just stops being angular.
+ */
+function monotonePath(xs: number[], ys: number[]): string {
+  const n = xs.length;
+  if (n < 2) return "";
+  if (n === 2) return `M ${xs[0].toFixed(2)} ${ys[0].toFixed(2)} L ${xs[1].toFixed(2)} ${ys[1].toFixed(2)}`;
+  const dx: number[] = [];
+  const slopes: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(xs[i + 1] - xs[i]);
+    slopes.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  }
+  // Tangents: neighbours that disagree in sign flatten to zero, so the curve
+  // cannot swing past a local low or high.
+  const tangents: number[] = [slopes[0]];
+  for (let i = 1; i < n - 1; i++) {
+    if (slopes[i - 1] * slopes[i] <= 0) {
+      tangents.push(0);
+    } else {
+      const common = dx[i - 1] + dx[i];
+      tangents.push((3 * common) / ((common + dx[i]) / slopes[i - 1] + (common + dx[i - 1]) / slopes[i]));
+    }
+  }
+  tangents.push(slopes[n - 2]);
+  let path = `M ${xs[0].toFixed(2)} ${ys[0].toFixed(2)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const cx1 = xs[i] + dx[i] / 3;
+    const cy1 = ys[i] + (tangents[i] * dx[i]) / 3;
+    const cx2 = xs[i + 1] - dx[i] / 3;
+    const cy2 = ys[i + 1] - (tangents[i + 1] * dx[i]) / 3;
+    path += ` C ${cx1.toFixed(2)} ${cy1.toFixed(2)} ${cx2.toFixed(2)} ${cy2.toFixed(2)} ${xs[i + 1].toFixed(2)} ${ys[i + 1].toFixed(2)}`;
+  }
+  return path;
+}
+
 /** Friendly round numbers for the y axis: enough labels to read the scale
  *  (0, 100, 200… in dollars; 0.00, 1.00, 2.00… in R), stopping where the
  *  lines stop — never drawing ticks beyond the range the chart holds. */
@@ -161,7 +199,7 @@ function multiLineChart(
     const final = cum[cum.length - 1];
     const color = final > 0 ? "var(--tj-tone-good)" : final < 0 ? "var(--tj-tone-bad)" : "var(--text-muted)";
     const x = (j: number): number => pad + (j * (w - 2 * pad)) / (cum.length - 1);
-    const toPts = (vals: number[]): string => vals.map((v, j) => `${x(j).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    const lineD = monotonePath(cum.map((_, j) => x(j)), cum.map((v) => y(v)));
     // The area under the line, fading from the line's colour downward.
     const grad = document.createElementNS(svgNS, "linearGradient");
     grad.setAttribute("id", `tjgrad${chartSeq}_${i}`);
@@ -180,18 +218,18 @@ function multiLineChart(
     grad.appendChild(s1);
     grad.appendChild(s2);
     defs.appendChild(grad);
-    const area = document.createElementNS(svgNS, "polygon");
-    const zeroY = y(0).toFixed(1);
-    area.setAttribute("points", `${toPts(cum)} ${x(cum.length - 1).toFixed(1)},${zeroY} ${pad},${zeroY}`);
+    const area = document.createElementNS(svgNS, "path");
+    const zeroY = y(0).toFixed(2);
+    area.setAttribute("d", `${lineD} L ${x(cum.length - 1).toFixed(2)} ${zeroY} L ${x(0).toFixed(2)} ${zeroY} Z`);
     area.setAttribute("fill", `url(#tjgrad${chartSeq}_${i})`);
     area.setAttribute("stroke", "none");
     svg.appendChild(area);
-    const polyline = document.createElementNS(svgNS, "polyline");
-    polyline.setAttribute("points", toPts(cum));
-    polyline.setAttribute("class", "tj-strat-chart-line");
-    polyline.setAttribute("style", `stroke: ${color}`);
-    polyline.setAttribute("vector-effect", "non-scaling-stroke");
-    svg.appendChild(polyline);
+    const line = document.createElementNS(svgNS, "path");
+    line.setAttribute("d", lineD);
+    line.setAttribute("class", "tj-strat-chart-line");
+    line.setAttribute("style", `stroke: ${color}`);
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    svg.appendChild(line);
     // One hover band per trade: names its day and the running total on hover,
     // and a band never distorts the way a stretched dot would.
     pts.forEach((p, j) => {
