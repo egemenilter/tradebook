@@ -58,35 +58,48 @@ function streakLabel(series: Trade[]): string {
 const LINE_COLORS = ["#4a9eda", "#d98a4a", "#3fb96f", "#c96fd9", "#e2c044", "#5bc8c8", "#e2699a", "#8aa2f0"];
 
 /**
- * N cumulative lines on one axis. `value` picks the money a trade carries:
- * net in dollars, or its R multiple when the chart is read in R.
+ * N cumulative lines on one axis, drawn the way a chart should look: dashed
+ * gridlines, a dashed zero reference, translucent area under each line,
+ * uniform stroke (vector-effect keeps it crisp through the viewBox stretch)
+ * and a dot on every point that names its day and running total on hover.
  */
 function multiLineChart(
   el: HTMLElement,
-  entries: Array<{ series: Trade[]; cls?: string; value?: (t: Trade) => number | null }>,
-  valueOf: (t: Trade) => number | null = netPnl
+  entries: Array<{ series: Trade[]; value?: (t: Trade) => number | null }>,
+  opts: { value?: (t: Trade) => number | null; fmt?: (v: number) => string } = {}
 ): void {
+  const valueOf = opts.value ?? netPnl;
+  const fmt = opts.fmt ?? ((v: number): string => fmtMoney(v));
   const usable = entries
     .map((e) => {
-      const values: number[] = [];
+      const pts: Array<{ date: string; v: number }> = [];
       for (const t of e.series) {
-        const v = (e.value ?? valueOf)(t);
+        const v = valueOf(t);
         // A trade the chart's unit cannot price (no stop → no R) just does not
         // sit on the curve; it does not erase the curve for everyone else.
         if (v === null || !Number.isFinite(v)) continue;
-        values.push(v);
+        pts.push({ date: t.date, v });
       }
-      return { cls: e.cls, values };
+      return pts;
     })
-    .filter((e) => e.values.length >= 2);
+    .filter((pts) => pts.length >= 2);
   if (!usable.length) {
     el.createSpan({ cls: "tj-strat-chart-empty", text: "A curve needs two trades." });
     return;
   }
   const w = 320;
-  const h = 96;
-  const pad = 5;
-  const flat = usable.flatMap((e) => e.values);
+  const h = 150;
+  const pad = 8;
+  const cums = usable.map((pts) => {
+    const out: number[] = [];
+    let acc = 0;
+    for (const p of pts) {
+      acc += p.v;
+      out.push(acc);
+    }
+    return out;
+  });
+  const flat = cums.flat();
   const min = Math.min(0, ...flat);
   const max = Math.max(0, ...flat);
   const span = max - min || 1;
@@ -96,24 +109,63 @@ function multiLineChart(
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("class", "tj-strat-chart");
-  const zeroLine = document.createElementNS(svgNS, "line");
-  zeroLine.setAttribute("x1", String(pad));
-  zeroLine.setAttribute("x2", String(w - pad));
-  zeroLine.setAttribute("y1", y(0).toFixed(1));
-  zeroLine.setAttribute("y2", y(0).toFixed(1));
-  svg.appendChild(zeroLine);
-  usable.forEach((e, i) => {
+  // Gridlines: the range quartered, dashed and quiet, like a real chart grid.
+  for (const v of new Set([min, min + span / 3, min + (2 * span) / 3, max])) {
+    const gl = document.createElementNS(svgNS, "line");
+    gl.setAttribute("x1", String(pad));
+    gl.setAttribute("x2", String(w - pad));
+    gl.setAttribute("y1", y(v).toFixed(1));
+    gl.setAttribute("y2", y(v).toFixed(1));
+    gl.setAttribute("class", "grid");
+    svg.appendChild(gl);
+  }
+  // The zero reference, stronger than the grid.
+  const zero = document.createElementNS(svgNS, "line");
+  zero.setAttribute("x1", String(pad));
+  zero.setAttribute("x2", String(w - pad));
+  zero.setAttribute("y1", y(0).toFixed(1));
+  zero.setAttribute("y2", y(0).toFixed(1));
+  zero.setAttribute("class", "zero");
+  svg.appendChild(zero);
+  usable.forEach((pts, i) => {
+    const color = LINE_COLORS[i % LINE_COLORS.length];
     const cum: number[] = [];
     let acc = 0;
-    for (const v of e.values) {
-      acc += v;
+    for (const p of pts) {
+      acc += p.v;
       cum.push(acc);
     }
     const x = (j: number): number => pad + (j * (w - 2 * pad)) / (cum.length - 1);
+    const toPts = (vals: number[]): string => vals.map((v, j) => `${x(j).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    // The area under the line, translucent in the line's own colour.
+    const area = document.createElementNS(svgNS, "polygon");
+    const zeroY = y(0).toFixed(1);
+    area.setAttribute("points", `${toPts(cum)} ${x(cum.length - 1).toFixed(1)},${zeroY} ${pad},${zeroY}`);
+    area.setAttribute("fill", color);
+    area.setAttribute("fill-opacity", "0.10");
+    area.setAttribute("stroke", "none");
+    svg.appendChild(area);
     const polyline = document.createElementNS(svgNS, "polyline");
-    polyline.setAttribute("points", cum.map((v, j) => `${x(j).toFixed(1)},${y(v).toFixed(1)}`).join(" "));
-    polyline.setAttribute("class", `tj-strat-chart-line lc${i % LINE_COLORS.length}`);
+    polyline.setAttribute("points", toPts(cum));
+    polyline.setAttribute("class", "tj-strat-chart-line");
+    polyline.setAttribute("stroke", color);
+    polyline.setAttribute("vector-effect", "non-scaling-stroke");
     svg.appendChild(polyline);
+    // One hover band per trade: names its day and the running total on hover,
+    // and a band never distorts the way a stretched dot would.
+    pts.forEach((p, j) => {
+      const bandX = (k: number): number => (k === 0 ? pad : (x(k - 1) + x(k)) / 2);
+      const band = document.createElementNS(svgNS, "rect");
+      band.setAttribute("x", bandX(j).toFixed(1));
+      band.setAttribute("y", String(pad));
+      band.setAttribute("width", (j === pts.length - 1 ? w - pad - bandX(j) : bandX(j + 1) - bandX(j)).toFixed(1));
+      band.setAttribute("height", String(h - 2 * pad));
+      band.setAttribute("class", "band");
+      const title = document.createElementNS(svgNS, "title");
+      title.textContent = `${p.date} · ${fmt(cum[j])}`;
+      band.appendChild(title);
+      svg.appendChild(band);
+    });
   });
   el.appendChild(svg);
 }
@@ -258,32 +310,41 @@ export class SetupsView extends ItemView {
     }
   }
 
-  /** The stats window as three quiet buttons, plus the window's trade count. */
-  private renderPeriodControl(main: HTMLElement, stats: Map<string, StratStat>): void {
+  /** How many filed trades each window holds — the buttons show their reach. */
+  private async windowCounts(): Promise<{ all: number; month: number; year: number }> {
+    const trades = await this.plugin.loadTrades();
+    const excludeDemos = this.plugin.settings.excludeDemosFromPortfolio !== false;
+    const usable = trades.filter(
+      (t) => !this.plugin.isArchivedTrade(t) && !(excludeDemos && this.plugin.resolveAccountType(t.account) === "demo") && Number.isFinite(t.pnl) && !!(t.setup || "").trim()
+    );
+    const today = todayKey(this.plugin.settings.timeZone);
+    const count = (prefix: string): number => usable.filter((t) => !prefix || t.date.startsWith(prefix)).length;
+    return { all: usable.length, month: count(today.slice(0, 7)), year: count(today.slice(0, 4)) };
+  }
+
+  /** The stats window as three buttons, each showing its own trade count. */
+  private async renderPeriodControl(main: HTMLElement): Promise<void> {
+    const counts = await this.windowCounts();
     const seg = main.createDiv({ cls: "tj-strat-period" });
-    const opts: Array<["all" | "month" | "year", string]> = [
-      ["all", "All time"],
-      ["month", "This month"],
-      ["year", "This year"],
+    const opts: Array<["all" | "month" | "year", string, number]> = [
+      ["all", "All time", counts.all],
+      ["month", "This month", counts.month],
+      ["year", "This year", counts.year],
     ];
-    for (const [id, label] of opts) {
+    for (const [id, label, n] of opts) {
       const b = seg.createEl("button", {
         cls: "tj-add-seg-btn" + (this.period === id ? " on" : ""),
-        text: label,
         attr: { type: "button" },
       });
+      b.createSpan({ text: label });
+      const badge = b.createSpan({ cls: "tj-strat-period-badge", text: String(n) });
+      badge.setAttr("title", "Filed trades inside this window");
       b.addEventListener("click", () => {
         if (this.period === id) return;
         this.period = id;
         void this.render();
       });
     }
-    // The window says what it holds: the count is how the eye knows the
-    // buttons did something, especially while every trade sits in one month.
-    const n = [...stats.values()].reduce((sum, s) => sum + s.n, 0);
-    const label = this.period === "month" ? "this month" : this.period === "year" ? "this year" : "all time";
-    const caption = seg.createSpan({ cls: "tj-strat-period-count", text: `${n} ${n === 1 ? "trade" : "trades"}` });
-    caption.setAttr("title", `Filed trades inside the window (${label}). Missed setups are shown separately.`);
   }
 
   private async renderOverview(main: HTMLElement): Promise<void> {
@@ -294,7 +355,7 @@ export class SetupsView extends ItemView {
     });
 
     const stats = await this.collectStats();
-    this.renderPeriodControl(main, stats);
+    await this.renderPeriodControl(main);
 
     const registered = this.plugin.settings.strategies ?? [];
     const registeredKeys = new Set(registered.map((s) => s.name.trim().toLowerCase()));
@@ -357,7 +418,7 @@ export class SetupsView extends ItemView {
       const chartEl = chartCard.createDiv({ cls: "tj-strat-chartbox" });
       multiLineChart(
         chartEl,
-        charted.map((s) => ({ series: s.series, cls: "" }))
+        charted.map((s) => ({ series: s.series }))
       );
       const legend = chartCard.createDiv({ cls: "tj-strat-legend" });
       charted.forEach((s, i) => {
@@ -517,7 +578,7 @@ export class SetupsView extends ItemView {
       this.rulesEditing = false;
       void this.render();
     });
-    this.renderPeriodControl(nav, stats);
+    await this.renderPeriodControl(nav);
 
     const titleRow = main.createDiv({ cls: "tj-strat-detail-head" });
     const titleBlock = titleRow.createDiv({ cls: "tj-strat-detail-title" });
@@ -576,7 +637,11 @@ export class SetupsView extends ItemView {
     }
     const chartEl = chartCard.createDiv({ cls: "tj-strat-chartbox" });
     const valueOf = this.chartMode === "r" ? (t: Trade) => tradeR(t) : (t: Trade) => netPnl(t);
-    multiLineChart(chartEl, [{ series: g.series, value: valueOf }], valueOf);
+    const fmtOf =
+      this.chartMode === "r"
+        ? (v: number): string => `${v >= 0 ? "+" : ""}${v.toFixed(2)}R`
+        : (v: number): string => fmtMoney(v);
+    multiLineChart(chartEl, [{ series: g.series }], { value: valueOf, fmt: fmtOf });
     if (this.chartMode === "r") {
       chartEl.setAttr("title", "Cumulative R — trades without a recorded stop cannot sit on an R curve, so they are left out.");
     }

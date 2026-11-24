@@ -13851,14 +13851,23 @@ justify-content: space-between;
 
 .tj-strat-chart {
   width: 100%;
-  height: 96px;
+  height: 150px;
   display: block;
 }
 
-.tj-strat-chart line {
-  stroke: color-mix(in srgb, var(--text-muted, #9aa0a6) 40%, transparent);
+.tj-strat-chart line.grid {
+  stroke: var(--background-modifier-border, rgba(128, 128, 128, 0.25));
   stroke-width: 1;
   stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.tj-strat-chart line.zero {
+  stroke: var(--text-muted, #9aa0a6);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.65;
+  vector-effect: non-scaling-stroke;
 }
 
 .tj-strat-chart polyline {
@@ -13868,8 +13877,22 @@ justify-content: space-between;
   stroke-linecap: round;
 }
 
-.tj-strat-chart.is-pos polyline { stroke: #3fb96f; }
-.tj-strat-chart.is-neg polyline { stroke: #d9534f; }
+.tj-strat-chart rect.band {
+  fill: transparent;
+}
+
+.tj-strat-chart rect.band:hover {
+  fill: rgba(128, 128, 128, 0.10);
+}
+
+.tj-strat-period-badge {
+  margin-left: 5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--text-muted, #9aa0a6) 16%, transparent);
+}
 
 .tj-strat-chart-empty {
   font-size: 11.5px;
