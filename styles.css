@@ -13681,3 +13681,265 @@ justify-content: space-between;
   margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
+
+/* ================================================================
+   Strategies — overview grid + per-strategy detail page
+   ================================================================ */
+
+.tj-strat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.tj-strat-grid-item {
+  position: relative;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--text-muted, #9aa0a6) 18%, transparent);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.tj-strat-grid-item:hover {
+  border-color: color-mix(in srgb, var(--text-muted, #9aa0a6) 40%, transparent);
+  transform: translateY(-1px);
+}
+
+.tj-strat-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 56px;
+}
+
+.tj-strat-card-top .tj-strat-item-name {
+  font-weight: 600;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tj-strat-grid-item .tj-strat-item-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.tj-strat-grid-item:hover .tj-strat-item-actions,
+.tj-strat-grid-item .tj-strat-item-actions.is-open {
+  opacity: 1;
+}
+
+.tj-strat-card-metrics {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-muted, #9aa0a6);
+  flex-wrap: wrap;
+}
+
+.tj-strat-card-bottom {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tj-strat-card-expectancy {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #9aa0a6);
+}
+
+.tj-strat-card-pnl {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tj-strat-card-streak {
+  font-size: 10.5px;
+  color: var(--text-muted, #9aa0a6);
+}
+
+.tj-strat-untracked-card {
+  margin-top: 12px;
+}
+
+/* ---- Detail page ---- */
+
+.tj-strat-detail-nav {
+  margin-bottom: 6px;
+}
+
+.tj-strat-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.tj-strat-detail-head .tj-view-h1 {
+  margin: 0;
+}
+
+.tj-strat-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tj-strat-detail-streak {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--text-muted, #9aa0a6);
+  background: color-mix(in srgb, var(--text-muted, #9aa0a6) 12%, transparent);
+  white-space: nowrap;
+}
+
+.tj-strat-statgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tj-strat-stat {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--text-muted, #9aa0a6) 16%, transparent);
+}
+
+.tj-strat-stat-l {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #9aa0a6);
+}
+
+.tj-strat-stat-v {
+  font-size: 14.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.tj-strat-stat-v.is-hypothetical {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.tj-strat-chartcard {
+  margin-bottom: 10px;
+}
+
+.tj-strat-chartbox {
+  padding: 4px 2px 2px;
+}
+
+.tj-strat-chart {
+  width: 100%;
+  height: 96px;
+  display: block;
+}
+
+.tj-strat-chart line {
+  stroke: color-mix(in srgb, var(--text-muted, #9aa0a6) 40%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.tj-strat-chart polyline {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.tj-strat-chart.is-pos polyline { stroke: #3fb96f; }
+.tj-strat-chart.is-neg polyline { stroke: #d9534f; }
+
+.tj-strat-chart-empty {
+  font-size: 11.5px;
+  color: var(--text-muted, #9aa0a6);
+}
+
+/* ---- Rules ---- */
+
+.tj-strat-rules-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: default;
+}
+
+.tj-strat-rules-chip.is-ready {
+  color: #3fb96f;
+  background: color-mix(in srgb, #3fb96f 12%, transparent);
+  border: 1px solid color-mix(in srgb, #3fb96f 30%, transparent);
+}
+
+.tj-strat-rules-chip.is-empty {
+  color: var(--text-muted, #9aa0a6);
+  background: color-mix(in srgb, var(--text-muted, #9aa0a6) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-muted, #9aa0a6) 28%, transparent);
+}
+
+.tj-strat-rules-body {
+  margin-top: 8px;
+}
+
+.tj-strat-rules-input {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  font-family: var(--font-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--text-muted, #9aa0a6) 24%, transparent);
+  background: transparent;
+  color: var(--text-normal, inherit);
+}
+
+.tj-strat-rules-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.tj-strat-rules-text {
+  white-space: pre-wrap;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.tj-strat-rules-empty {
+  font-size: 12px;
+  color: var(--text-muted, #9aa0a6);
+}
+
+/* ---- Detail recent list ---- */
+
+.tj-strat-recent-page {
+  margin-top: 4px;
+}
+
+.tj-strat-recent-r {
+  color: var(--text-muted, #9aa0a6);
+  font-variant-numeric: tabular-nums;
+}

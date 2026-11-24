@@ -1209,6 +1209,40 @@ export default class TradebookPlugin extends Plugin {
     }
   }
 
+  /** A strategy note's body — everything after the frontmatter, or "". */
+  async readStrategyNoteBody(name: string): Promise<string> {
+    const rec = this.findStrategy(name);
+    if (!rec) return "";
+    const file = this.app.vault.getAbstractFileByPath(this.strategyNotePath(rec.name));
+    if (!(file instanceof TFile)) return "";
+    try {
+      const content = await this.app.vault.cachedRead(file);
+      const m = /^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/.exec(content);
+      return m ? content.slice(m[0].length) : content;
+    } catch {
+      return "";
+    }
+  }
+
+  /** Rewrite a strategy note's body in place; the frontmatter stays. */
+  async saveStrategyNoteBody(name: string, body: string): Promise<boolean> {
+    const rec = this.findStrategy(name);
+    if (!rec) return false;
+    const file = this.app.vault.getAbstractFileByPath(this.strategyNotePath(rec.name));
+    if (!(file instanceof TFile)) return false;
+    try {
+      await this.app.vault.process(file, (content) => {
+        const m = /^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/.exec(content);
+        const head = m ? m[0] : "";
+        return head + (body.length && !body.endsWith("\n") ? body + "\n" : body);
+      });
+      return true;
+    } catch (err) {
+      console.error("[tradebook] could not save the strategy note", err);
+      return false;
+    }
+  }
+
   getAccountRules(): AccountRule[] {
     return this.settings.accountRules.length
       ? this.settings.accountRules
