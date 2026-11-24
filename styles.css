@@ -13847,6 +13847,19 @@ justify-content: space-between;
 
 .tj-strat-chartbox {
   padding: 4px 2px 2px;
+  position: relative;
+}
+
+/* Scale numbers printed beside the chart: max, min and the zero line. */
+.tj-chart-axislabel {
+  position: absolute;
+  right: 6px;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #9aa0a6);
+  pointer-events: none;
+  text-shadow: 0 0 4px var(--background-primary, rgba(0, 0, 0, 0.4));
 }
 
 .tj-strat-chart {
@@ -14042,19 +14055,10 @@ justify-content: space-between;
   font-weight: 600;
 }
 
-/* Two lines on the compare chart, told apart by colour. */
-.tj-strat-chart .tj-strat-chart-line.is-a { stroke: #4a9eda; }
-.tj-strat-chart .tj-strat-chart-line.is-b { stroke: #d98a4a; }
+/* Chart lines wear the journal's own tones: green over zero, red under it. */
+.tj-strat-chart .tj-strat-chart-line { }
 
 /* ---- Multi-line palette (overview + detail charts) ---- */
-.tj-strat-chart .tj-strat-chart-line.lc0 { stroke: #4a9eda; }
-.tj-strat-chart .tj-strat-chart-line.lc1 { stroke: #d98a4a; }
-.tj-strat-chart .tj-strat-chart-line.lc2 { stroke: #3fb96f; }
-.tj-strat-chart .tj-strat-chart-line.lc3 { stroke: #c96fd9; }
-.tj-strat-chart .tj-strat-chart-line.lc4 { stroke: #e2c044; }
-.tj-strat-chart .tj-strat-chart-line.lc5 { stroke: #5bc8c8; }
-.tj-strat-chart .tj-strat-chart-line.lc6 { stroke: #e2699a; }
-.tj-strat-chart .tj-strat-chart-line.lc7 { stroke: #8aa2f0; }
 
 .tj-strat-legend {
   display: flex;
@@ -14118,6 +14122,17 @@ justify-content: space-between;
 .tj-strat-outcome-bar.pos { background: #3fb96f; }
 .tj-strat-outcome-bar.neg { background: #d9534f; }
 
+/* Bars read the journal's tone classes (tj-pos / tj-neg / tj-flat). */
+.tj-strat-outcome-bar.tj-pos { background: var(--tj-tone-good); }
+.tj-strat-outcome-bar.tj-neg { background: var(--tj-tone-bad); }
+.tj-strat-outcome-bar.tj-flat { background: color-mix(in srgb, var(--text-muted, #9aa0a6) 45%, transparent); }
+
+.tj-strat-outcome-cap {
+  font-size: 11px;
+  color: var(--text-muted, #9aa0a6);
+  margin-top: 2px;
+}
+
 /* ---- By symbol ---- */
 
 .tj-strat-symbols {
@@ -14155,14 +14170,20 @@ justify-content: space-between;
 .tj-strat-symbol-bar.pos { background: #3fb96f; }
 .tj-strat-symbol-bar.neg { background: #d9534f; }
 
+.tj-strat-symbol-bar.tj-pos { background: var(--tj-tone-good); }
+.tj-strat-symbol-bar.tj-neg { background: var(--tj-tone-bad); }
+.tj-strat-symbol-bar.tj-flat { background: color-mix(in srgb, var(--text-muted, #9aa0a6) 45%, transparent); }
+
 .tj-strat-symbol-val {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.tj-strat-symbol-val.pos, .tj-strat-symbol-bar.pos { }
-.tj-strat-symbol-val.pos { color: #3fb96f; }
-.tj-strat-symbol-val.neg { color: #d9534f; }
+.tj-strat-symbol-val.tj-pos { color: var(--tj-tone-good); }
+.tj-strat-symbol-val.tj-neg { color: var(--tj-tone-bad); }
+
+.tj-strat-compare-v.tj-pos { color: var(--tj-tone-good); }
+.tj-strat-compare-v.tj-neg { color: var(--tj-tone-bad); }
 
 /* ---- Missed widget on Home ---- */
 

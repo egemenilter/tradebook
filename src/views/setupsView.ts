@@ -128,13 +128,16 @@ function multiLineChart(
   zero.setAttribute("class", "zero");
   svg.appendChild(zero);
   usable.forEach((pts, i) => {
-    const color = LINE_COLORS[i % LINE_COLORS.length];
     const cum: number[] = [];
     let acc = 0;
     for (const p of pts) {
       acc += p.v;
       cum.push(acc);
     }
+    // The line wears the result it ends with: green over zero, red under it —
+    // the same tones every other number in the journal speaks in.
+    const final = cum[cum.length - 1];
+    const color = final > 0 ? "var(--tj-tone-good)" : final < 0 ? "var(--tj-tone-bad)" : "var(--text-muted)";
     const x = (j: number): number => pad + (j * (w - 2 * pad)) / (cum.length - 1);
     const toPts = (vals: number[]): string => vals.map((v, j) => `${x(j).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
     // The area under the line, translucent in the line's own colour.
@@ -148,7 +151,7 @@ function multiLineChart(
     const polyline = document.createElementNS(svgNS, "polyline");
     polyline.setAttribute("points", toPts(cum));
     polyline.setAttribute("class", "tj-strat-chart-line");
-    polyline.setAttribute("stroke", color);
+    polyline.setAttribute("style", `stroke: ${color}`);
     polyline.setAttribute("vector-effect", "non-scaling-stroke");
     svg.appendChild(polyline);
     // One hover band per trade: names its day and the running total on hover,
@@ -168,6 +171,16 @@ function multiLineChart(
     });
   });
   el.appendChild(svg);
+  // Axis numbers at the range's ends and the zero line, printed beside the
+  // chart so the eye can read the scale, not just the shape.
+  el.addClass("has-axis");
+  const axisLabel = (v: number): void => {
+    const l = el.createDiv({ cls: "tj-chart-axislabel", text: fmt(v) });
+    l.style.top = `${((y(v) / h) * 100).toFixed(1)}%`;
+  };
+  axisLabel(max);
+  if (min !== max) axisLabel(min);
+  if (min < 0 && max > 0) axisLabel(0);
 }
 
 /**
@@ -421,9 +434,11 @@ export class SetupsView extends ItemView {
         charted.map((s) => ({ series: s.series }))
       );
       const legend = chartCard.createDiv({ cls: "tj-strat-legend" });
-      charted.forEach((s, i) => {
+      charted.forEach((s) => {
+        const net = stats.get(s.name.toLowerCase())?.net ?? 0;
         const item = legend.createSpan({ cls: "tj-strat-legend-item" });
-        item.createSpan({ cls: `tj-strat-legend-dot lc${i % LINE_COLORS.length}`, attr: { "aria-hidden": "true" } });
+        const dot = item.createSpan({ cls: "tj-strat-legend-dot", attr: { "aria-hidden": "true" } });
+        dot.style.background = net > 0 ? "var(--tj-tone-good)" : net < 0 ? "var(--tj-tone-bad)" : "var(--text-muted)";
         item.createSpan({ text: s.name });
         item.addEventListener("click", () => {
           this.selected = s.name;
@@ -650,6 +665,10 @@ export class SetupsView extends ItemView {
     if (g.series.length) {
       const ocCard = main.createDiv({ cls: "tj-strat-card" });
       ocCard.createDiv({ cls: "tj-strat-card-title", text: "Outcomes" });
+      ocCard.createDiv({
+        cls: "tj-strat-outcome-cap",
+        text: "One bar per trade, oldest first — green wins, red losses; hover for the day and the amount.",
+      });
       const strip = ocCard.createDiv({ cls: "tj-strat-outcome" });
       const maxAbs = Math.max(...g.series.map((t) => Math.abs(netPnl(t))), 1);
       for (const t of g.series) {
