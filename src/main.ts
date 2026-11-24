@@ -1196,6 +1196,19 @@ export default class TradebookPlugin extends Plugin {
     }
   }
 
+  /** Open a strategy's own note in a new leaf. */
+  async openStrategyNote(name: string): Promise<void> {
+    const rec = this.findStrategy(name);
+    if (!rec) return;
+    const path = this.strategyNotePath(rec.name);
+    if (!this.app.vault.getAbstractFileByPath(path)) return;
+    try {
+      await this.app.workspace.openLinkText(path, "", true);
+    } catch (err) {
+      console.error("[tradebook] could not open the strategy note", path, err);
+    }
+  }
+
   getAccountRules(): AccountRule[] {
     return this.settings.accountRules.length
       ? this.settings.accountRules
@@ -1324,6 +1337,9 @@ export default class TradebookPlugin extends Plugin {
 
   /** Load all trade notes from the configured folder into Trade objects. */
   private _tradeCache = new Map<string, { mtime: number; trade: Trade }>();
+  /** Parsed `type: missed` notes, keyed like _tradeCache. Separate on purpose:
+   *  missed setups never enter loadTrades(), so no statistic can meet one. */
+  private _missedCache = new Map<string, { mtime: number; trade: Trade }>();
   private _cacheSaveTimer = 0;
   private _reloadTimer = 0;
 
@@ -2184,6 +2200,7 @@ export default class TradebookPlugin extends Plugin {
   /** Drop the parsed-trade cache so the next load re-reads every note. */
   clearTradeCache(): void {
     this._tradeCache.clear();
+    this._missedCache.clear();
   }
 
   // --------------------------------------------------------------- backup ----
@@ -2436,6 +2453,47 @@ export default class TradebookPlugin extends Plugin {
   async loadTradesExpanded(): Promise<Trade[]> {
     const physical = await this.loadTrades();
     return expandVirtualLegs(this, physical);
+  }
+
+  /**
+   * Missed setups — `type: missed` notes: a setup the trader identified and
+   * wrote down, but did not take. Every number on one is what WOULD have been,
+   * so they are deliberately OUT of loadTrades(): no statistic, curve, calendar
+   * or score ever meets them. The Trade Ledger and Strategies pull these
+   * separately and label them, so they are visible without being counted.
+   */
+  async loadMissedTrades(): Promise<Trade[]> {
+    const missed: Trade[] = [];
+    const files = this.journalNoteFiles();
+    for (const f of files) {
+      const mtime = f.stat ? f.stat.mtime : 0;
+      const cached = this._missedCache.get(f.path);
+      let t: Trade | null = null;
+      if (cached && cached.mtime === mtime) {
+        t = { ...cached.trade };
+      } else {
+        const content = await this.app.vault.cachedRead(f);
+        const partial = parseTradeFromMarkdown(content);
+        if (partial.type === "missed" && partial.date && partial.symbol && typeof partial.pnl === "number") {
+          t = { ...(partial as Trade), id: f.path };
+          this._missedCache.set(f.path, { mtime, trade: { ...t } });
+        } else {
+          this._missedCache.delete(f.path);
+        }
+      }
+      if (t) {
+        t.id = f.path;
+        const _m = this.mappedAccount(t.account);
+        t.accountType = _m ? _m.type : classifyAccount(t.account, this.getAccountRules());
+        t.pnlPoints = tradePoints(t);
+        missed.push(t);
+      }
+    }
+    const live = new Set(files.map((f) => f.path));
+    for (const key of [...this._missedCache.keys()]) {
+      if (!live.has(key)) this._missedCache.delete(key);
+    }
+    return missed;
   }
 
   /**

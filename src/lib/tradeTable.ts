@@ -206,6 +206,18 @@ export function tradeRows(trades: Trade[]): TradeRow[] {
   return [...map.values()];
 }
 
+/** A missed trade: a setup identified but not taken — visible, never counted. */
+export function isMissed(t: Trade): boolean {
+  return t.type === "missed";
+}
+
+/** A day's real net: every row's money except missed setups, which count in
+ *  nothing. A row with an unknown P&L still makes the whole day unknown. */
+function dayMoney(rows: TradeRow[]): number {
+  const countable = rows.filter((row) => !isMissed(row.rep));
+  return countable.every((row) => Number.isFinite(row.money)) ? countable.reduce((sum, row) => sum + row.money, 0) : Number.NaN;
+}
+
 /** What a cell renderer may need beyond the trade itself. */
 export interface TradeColumnCtx {
   plugin: TradebookPlugin;
@@ -281,6 +293,15 @@ export const TRADE_COLUMNS: TradeColumn[] = [
     firstDir: "asc",
     render: (td, t, _plugin, ctx) => {
       td.createSpan({ cls: "tj-tbl-sym", text: t.symbol });
+      // A missed setup is visible on the row it belongs to — but the eye has to
+      // see at once that its numbers are hypothetical, never real money.
+      if (isMissed(t)) {
+        const chip = td.createSpan({ cls: "tj-tbl-missed", text: "Missed" });
+        attachTip(chip, {
+          title: "Missed — not taken",
+          sub: "A setup you identified but did not trade. Its P&L is what it would have been, and it counts in no statistic.",
+        });
+      }
       // Symbol is the one thing the log is read by, so it carries the row and
       // nothing else. Which accounts a decision reached is metadata: it lives in
       // the optional Accounts column, off by default, and the Accounts column is
@@ -426,6 +447,7 @@ export const TRADE_COLUMNS: TradeColumn[] = [
       // leg. The day total adds up because every decision appears exactly once.
       const money = ctx.row ? ctx.row.money : t.pnl;
       td.addClass("tj-tbl-pnl");
+      if (isMissed(t)) td.addClass("is-hypothetical");
       // A trade that nets exactly zero is neither a win nor a loss: it gets no
       // colour at all. A trade that took TP1 and TP2 and left the rest flat nets
       // positive, so it stays a win — the ledger never calls that break-even.
@@ -458,6 +480,7 @@ export const TRADE_COLUMNS: TradeColumn[] = [
       // A copy's net belongs to the copy's account, not on this row.
       const money = ctx.row ? netPnl(ctx.row.rep) : netPnl(t);
       td.addClass("tj-tbl-pnl");
+      if (isMissed(t)) td.addClass("is-hypothetical");
       if (!Number.isFinite(money)) {
         td.setText("—");
         return;
@@ -698,7 +721,9 @@ function groupDays(rows: TradeRow[], sort: TradeSort | null = null, plugin?: Tra
     .sort((a, b) => a[0].localeCompare(b[0]) * dayOrder)
     .map(([key, rows]) => ({
       key,
-      money: rows.every((row) => Number.isFinite(row.money)) ? rows.reduce((sum, row) => sum + row.money, 0) : Number.NaN,
+      // A missed setup's P&L is hypothetical: the day's real net reads without
+      // it, never against it.
+      money: dayMoney(rows),
       rows:
         sort && plugin
           ? sortTrades(rows, sort, plugin)
@@ -1003,7 +1028,7 @@ export function renderTradeTable(host: HTMLElement, opts: TradeTableOpts): void 
       : [
           {
             key: "",
-            money: rows.every((row) => Number.isFinite(row.money)) ? rows.reduce((sum, row) => sum + row.money, 0) : Number.NaN,
+            money: dayMoney(rows),
             rows: opts.sort
               ? sortTrades(rows.slice(), opts.sort, plugin)
               : rows

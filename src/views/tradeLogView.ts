@@ -432,6 +432,12 @@ export class TradeLogView extends ItemView {
 
   async refresh(): Promise<void> {
     this.trades = await this.plugin.loadTradesExpanded();
+    // Missed setups ride the ledger visibly but count in nothing: the day
+    // headers and every statistic skip them (see tradeTable.dayMoney).
+    try {
+      const missed = await this.plugin.loadMissedTrades();
+      if (missed.length) this.trades = [...this.trades, ...missed];
+    } catch { /* notes unreadable — the ledger shows the real trades */ }
     this._dataVersion++;
     this.render();
   }

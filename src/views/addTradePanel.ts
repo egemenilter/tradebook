@@ -397,6 +397,23 @@ export class AddTradePanel {
     longBtn.addEventListener("click", () => setDirection("long"));
     shortBtn.addEventListener("click", () => setDirection("short"));
 
+    // ---- Missed (didn't take it) ----
+    // A setup identified but not taken: every number stays hypothetical and out
+    // of every statistic. It sits beside Direction because the answer is one
+    // click at entry time, not a settings question.
+    const missedBtn = seg.createEl("button", {
+      cls: "tj-add-seg-btn tj-add-missed-btn" + (t.type === "missed" ? " on" : ""),
+      text: "Missed",
+      attr: { type: "button" },
+    });
+    missedBtn.addEventListener("click", () => {
+      const on = t.type !== "missed";
+      if (on) t.type = "missed";
+      else delete t.type;
+      missedBtn.toggleClass("on", on);
+      paint();
+    });
+
     // ---- Quantity ----
     const fQty = field("Quantity");
     const qtyInput = freeNumeric(
@@ -496,6 +513,8 @@ export class AddTradePanel {
       return c.createSpan({ cls: "tj-add-strip-v" });
     };
     const vPnl = cell("P&L");
+    /** The label beside the money: "Would-have-been" on a missed setup. */
+    const pnlKey = vPnl.parentElement?.querySelector<HTMLSpanElement>(":scope > .tj-add-strip-k") ?? null;
     const vPts = cell("Realized pts/contract");
     const vHold = cell("Hold");
     strip.createDiv({ cls: "tj-add-strip-spacer" });
@@ -506,6 +525,7 @@ export class AddTradePanel {
 
     const paint = () => {
       const qty = t.quantity || 1;
+      pnlKey?.setText(t.type === "missed" ? "Would-have-been" : "P&L");
       const multiple = exitDrafts.length > 1;
       const quantities = exitDrafts.map((draft) => (multiple ? Number(draft.quantity) : qty));
       const validQuantities = quantities.every((value) => Number.isFinite(value) && value > 0);
@@ -1134,7 +1154,12 @@ export class AddTradePanel {
     // short or failed write says exactly what happened and leaves the form open
     // with the values still in it.
     try {
-      const trades = await this.plugin.applyBroadcast(this.manualTrades, broadcast);
+      // A missed setup is never broadcast: nothing was taken, so no copy leg
+      // can mirror it. It saves alone, marked, and out of every statistic.
+      const tradable = this.manualTrades.filter((t) => t.type !== "missed");
+      const missedOnly = this.manualTrades.filter((t) => t.type === "missed");
+      const legs = tradable.length ? await this.plugin.applyBroadcast(tradable, broadcast) : [];
+      const trades = [...legs, ...missedOnly];
       const count = await this.plugin.storeTrades(trades);
       if (count < trades.length) {
         btn.removeAttribute("disabled");

@@ -39,7 +39,7 @@ import { attachTip } from "../lib/tip";
 import { fillIndex, fillLabel, fillSet, FillSet, isBreakEven, toneClass, tradePoints } from "../lib/fills";
 import { knownFuturesSpec } from "../futures";
 import { sessionOf } from "../lib/sessions";
-import { holdFmtOf } from "../lib/tradeTable";
+import { holdFmtOf, isMissed } from "../lib/tradeTable";
 import { recordedRisk } from "../lib/risk";
 import { mountDropdown, mountMultiDropdown, DropdownItem, MultiDropdown } from "../lib/dropdown";
 import { freeNumeric } from "../lib/numeric";
@@ -161,7 +161,15 @@ export class TradeDetailView extends ItemView {
     if (from) this.from = from;
     const trades = await this.loadScope();
     this.allTrades = trades;
-    const found = trades.find((t) => t.id === id);
+    let found = trades.find((t) => t.id === id);
+    if (!found) {
+      // A missed setup is not in loadTrades(): it still has to open from the
+      // ledger, walking alone (it is out of every statistic by design).
+      try {
+        found = (await this.plugin.loadMissedTrades()).find((t) => t.id === id);
+        if (found) this.allTrades = [found];
+      } catch { /* unreadable — the view says so */ }
+    }
     if (found) await this.setTrade(found);
   }
 
@@ -206,7 +214,13 @@ export class TradeDetailView extends ItemView {
       const trades = await this.loadScope();
       this.allTrades = trades;
       if (savedId) {
-        const found = trades.find((t) => t.id === savedId);
+        let found = trades.find((t) => t.id === savedId);
+        if (!found) {
+          try {
+            found = (await this.plugin.loadMissedTrades()).find((t) => t.id === savedId);
+            if (found) this.allTrades = [found];
+          } catch { /* */ }
+        }
         if (found) { await this.setTrade(found); window.addEventListener("keydown", this.keydownHandler); return; }
       }
       if (trades.length) await this.setTrade(trades[0]);
@@ -335,6 +349,14 @@ export class TradeDetailView extends ItemView {
 
     // ---- Header ----
     const top = main.createDiv({ cls: "tj-td-top" });
+    // A missed setup opens like a trade, but the page has to say at once that
+    // nothing here moved real money.
+    if (isMissed(t)) {
+      const missedNote = main.createDiv({ cls: "tj-td-missed-note" });
+      missedNote.createSpan({
+        text: "Missed — a setup you identified but did not take. Every number below is what it would have been, and it counts in no statistic.",
+      });
+    }
     const head = top.createDiv({ cls: "tj-td-head" });
 
     // Segmented nav: Back + Prev + Counter + Next

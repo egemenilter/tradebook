@@ -128,7 +128,9 @@ export function tradeToMarkdown(t: Trade): string {
   const frontmatter = [
     // Identity for vault discovery: the plugin finds trades by this key, not by
     // folder, so the notes can be reorganised without ever breaking the journal.
-    `type: trade`,
+    // `missed` is the author's reserved second type: a setup identified but not
+    // taken — hypothetical numbers, out of every statistic.
+    `type: ${t.type === "missed" ? "missed" : "trade"}`,
     `date: ${t.date}`,
     `symbol: ${t.symbol}`,
     `account: ${quoteYaml(t.account)}`,

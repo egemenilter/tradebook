@@ -45,7 +45,10 @@ export interface AnalyticsScope {
  * never affected by it: the P&L of an account is always what actually moved.
  */
 export function analyticsTrades(trades: Trade[], countCopies = false): AnalyticsScope {
-  const money = trades.filter((t) => Number.isFinite(t.pnl));
+  // A missed trade (`type: missed`) is a setup identified but not taken: its
+  // numbers are what WOULD have been. Real money never moves, so it counts in
+  // no population here — whatever the caller's own filters say.
+  const money = trades.filter((t) => t.type !== "missed" && Number.isFinite(t.pnl));
   const unique = uniqueTrades(money);
   return { money, unique, counts: countCopies ? money : unique };
 }

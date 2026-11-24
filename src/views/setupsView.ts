@@ -4,8 +4,40 @@ import { renderAppShell } from "../ui";
 import { fmtMoney } from "../tz";
 import { toneClass } from "../lib/fills";
 import { attachTip } from "../lib/tip";
+import { netPnl } from "../lib/fees";
+import { tradeR } from "../lib/tradeTable";
+import type { Trade } from "../types";
 
 export const SETUPS_VIEW_TYPE = "tradebook-setups-view";
+
+/** Everything one strategy's card shows, computed from the notes. */
+interface StratStat {
+  n: number;
+  net: number;
+  wins: number;
+  rSum: number;
+  rN: number;
+  /** Newest first, capped at 20 — the recent list and the streak read it. */
+  recent: Trade[];
+  missedN: number;
+  missedPnl: number;
+}
+
+/** `+1.84R` — average R with its sign, or a dash-shaped absence. */
+function fmtAvgR(rSum: number, rN: number): string {
+  if (!rN) return "no R yet";
+  const v = rSum / rN;
+  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}R avg`;
+}
+
+/** The run the strategy is on right now: `3W streak`, `2L streak`. */
+function streakLabel(recent: Trade[]): string {
+  if (!recent.length) return "";
+  const first = netPnl(recent[0]) > 0;
+  let i = 0;
+  while (i < recent.length && netPnl(recent[i]) > 0 === first) i++;
+  return `${i}${first ? "W" : "L"} streak`;
+}
 
 /**
  * Strategies — registering the names you trade under. A name is enough to file
@@ -61,8 +93,8 @@ export class SetupsView extends ItemView {
       text: "Name the strategies you trade so every trade can be filed under one. Each name keeps its own note in your vault.",
     });
 
-    // ---- Usage counts, computed from the notes ----
-    const counts = new Map<string, { n: number; pnl: number }>();
+    // ---- Usage, computed from the notes ----
+    const stats = new Map<string, StratStat>();
     try {
       const trades = await this.plugin.loadTrades();
       // Portfolio demo rule — the same one the dashboard's baseTrades()
@@ -70,16 +102,46 @@ export class SetupsView extends ItemView {
       // so there is never an explicit scope here: with the setting on, demo
       // trades and archived accounts stay out of these totals.
       const excludeDemos = this.plugin.settings.excludeDemosFromPortfolio !== false;
-      for (const t of trades) {
-        if (this.plugin.isArchivedTrade(t)) continue;
-        if (excludeDemos && this.plugin.resolveAccountType(t.account) === "demo") continue;
+      const usable = trades.filter(
+        (t) => !this.plugin.isArchivedTrade(t) && !(excludeDemos && this.plugin.resolveAccountType(t.account) === "demo") && Number.isFinite(t.pnl)
+      );
+      const statOf = (name: string): StratStat => {
+        const k = name.trim().toLowerCase();
+        let s = stats.get(k);
+        if (!s) {
+          s = { n: 0, net: 0, wins: 0, rSum: 0, rN: 0, recent: [], missedN: 0, missedPnl: 0 };
+          stats.set(k, s);
+        }
+        return s;
+      };
+      for (const t of usable) {
         const name = (t.setup || "").trim();
         if (!name) continue;
-        const key = name.toLowerCase();
-        const g = counts.get(key) ?? { n: 0, pnl: 0 };
-        g.n += 1;
-        g.pnl += Number.isFinite(t.pnl) ? t.pnl : 0;
-        counts.set(key, g);
+        const s = statOf(name);
+        const net = netPnl(t);
+        s.n += 1;
+        s.net += net;
+        if (net > 0) s.wins += 1;
+        const r = tradeR(t);
+        if (r !== null) {
+          s.rSum += r;
+          s.rN += 1;
+        }
+        s.recent.push(t);
+      }
+      // Missed setups filed under the strategy: visible, never counted.
+      try {
+        for (const t of await this.plugin.loadMissedTrades()) {
+          const name = (t.setup || "").trim();
+          if (!name) continue;
+          const s = statOf(name);
+          s.missedN += 1;
+          s.missedPnl += Number.isFinite(t.pnl) ? netPnl(t) : 0;
+        }
+      } catch { /* notes unreadable — the card still shows the taken trades */ }
+      for (const s of stats.values()) {
+        s.recent.sort((a, b) => `${b.date} ${b.entryTime}`.localeCompare(`${a.date} ${a.entryTime}`));
+        s.recent = s.recent.slice(0, 20);
       }
     } catch {
       /* notes unreadable — the registry still renders below */
@@ -134,21 +196,11 @@ export class SetupsView extends ItemView {
       });
     } else {
       const list = card.createDiv({ cls: "tj-strat-rows" });
-      for (const s of registered) this.renderRow(list, s.name, counts, false, (el) => (focusInput = el));
-      for (const name of untracked) this.renderRow(list, name, counts, true, (el) => (focusInput = el));
+      for (const s of registered) this.renderRow(list, s.name, stats, false, (el) => (focusInput = el));
+      for (const name of untracked) this.renderRow(list, name, stats, true, (el) => (focusInput = el));
     }
 
     // ---- In development — kept quiet; the card above is the page ----
-    const note = main.createDiv({
-      cls: "tj-strat-note" + (this.plugin.settings.animations === false ? " is-still" : ""),
-    });
-    const noteIco = note.createSpan({ cls: "tj-strat-note-ico" });
-    setIcon(noteIco, "hammer");
-    const noteTxt = note.createSpan({ cls: "tj-strat-note-txt" });
-    noteTxt.createSpan({ cls: "tj-strat-note-strong", text: "In development" });
-    noteTxt.createSpan({
-      text: " Rules, per-strategy numbers and comparison are on the way. Everything you name now carries over.",
-    });
 
     if (focusInput) {
       const el = focusInput;
@@ -160,11 +212,11 @@ export class SetupsView extends ItemView {
   private renderRow(
     list: HTMLElement,
     name: string,
-    counts: Map<string, { n: number; pnl: number }>,
+    stats: Map<string, StratStat>,
     untracked: boolean,
     captureFocus: (el: HTMLInputElement) => void
   ): void {
-    const g = counts.get(name.toLowerCase());
+    const g = stats.get(name.toLowerCase());
     const row = list.createDiv({ cls: "tj-strat-item" });
     const info = row.createDiv({ cls: "tj-strat-item-main" });
 
@@ -196,10 +248,43 @@ export class SetupsView extends ItemView {
 
     info.createDiv({ cls: "tj-strat-item-name", text: name });
     const meta = info.createDiv({ cls: "tj-strat-item-meta" });
-    meta.createSpan({ text: g ? `${g.n} ${g.n === 1 ? "trade" : "trades"}` : "not used yet" });
-    if (g && g.n > 0) {
-      const pnl = meta.createSpan({ cls: "tj-strat-item-pnl " + toneClass(g.pnl) });
-      pnl.setText(g.pnl === 0 ? "—" : fmtMoney(g.pnl));
+    if (!g || !g.n) {
+      meta.createSpan({ text: "not used yet" });
+    } else {
+      const winRate = Math.round((g.wins / g.n) * 100);
+      meta.createSpan({ text: `${g.n} ${g.n === 1 ? "trade" : "trades"}` });
+      meta.createSpan({ cls: "tj-strat-sep", text: "·" });
+      meta.createSpan({ text: `${winRate}% win` });
+      meta.createSpan({ cls: "tj-strat-sep", text: "·" });
+      meta.createSpan({ text: fmtAvgR(g.rSum, g.rN) });
+      const streak = streakLabel(g.recent);
+      if (streak) {
+        meta.createSpan({ cls: "tj-strat-sep", text: "·" });
+        meta.createSpan({ text: streak });
+      }
+      if (g.missedN) {
+        meta.createSpan({ cls: "tj-strat-sep", text: "·" });
+        const mchip = meta.createSpan({ cls: "tj-strat-missed", text: `missed ${g.missedN}` });
+        attachTip(mchip, {
+          title: "Missed setups",
+          sub: `What they would have been: ${fmtMoney(g.missedPnl)}. They count in no total.`,
+        });
+      }
+      const pnl = meta.createSpan({ cls: "tj-strat-item-pnl " + toneClass(g.net) });
+      pnl.setText(g.net === 0 ? "—" : fmtMoney(g.net));
+
+      if (g.recent.length) {
+        const recent = info.createDiv({ cls: "tj-strat-recent" });
+        for (const t of g.recent.slice(0, 5)) {
+          const rowEl = recent.createDiv({ cls: "tj-strat-recent-row" });
+          rowEl.createSpan({ cls: "tj-strat-recent-date", text: t.date.slice(5) });
+          rowEl.createSpan({ cls: "tj-strat-recent-sym", text: `${t.symbol} ${t.direction === "long" ? "▲" : "▼"}` });
+          const p = rowEl.createSpan({ cls: "tj-strat-recent-pnl " + toneClass(netPnl(t)) });
+          p.setText(fmtMoney(netPnl(t)));
+          rowEl.setAttr("title", "Open the trade");
+          rowEl.addEventListener("click", () => void this.plugin.openTradeDetail({ id: t.id }));
+        }
+      }
     }
     if (untracked) {
       const chip = meta.createSpan({ cls: "tj-strat-untracked", text: "untracked" });
@@ -226,6 +311,10 @@ export class SetupsView extends ItemView {
       this.adding = false;
       void this.render();
     });
+    const noteBtn = actions.createEl("button", { cls: "tj-iconbtn" });
+    setIcon(noteBtn, "book-open");
+    attachTip(noteBtn, { title: "Open the strategy note", sub: "The rules and documentation for this strategy." });
+    noteBtn.addEventListener("click", () => void this.plugin.openStrategyNote(name));
     const delBtn = actions.createEl("button", { cls: "tj-iconbtn" });
     setIcon(delBtn, "trash");
     attachTip(delBtn, { title: "Remove from the list", sub: "Trades and the strategy note stay as they are." });
