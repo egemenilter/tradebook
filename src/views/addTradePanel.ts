@@ -407,7 +407,9 @@ export class AddTradePanel {
     );
     qtyInput.value = String(t.quantity || 1);
     qtyInput.addEventListener("input", () => {
-      const n = parseInt(qtyInput.value, 10);
+      // Lots can be fractional on a CFD — 0.10 gold is a tenth of a market —
+      // so the size is read as a real number, not a whole contract count.
+      const n = parseFloat(qtyInput.value);
       if (Number.isFinite(n) && n > 0) {
         t.quantity = n;
         if (exitDrafts.length === 1) exitDrafts[0].quantity = String(n);
