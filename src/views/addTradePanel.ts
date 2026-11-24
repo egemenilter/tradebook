@@ -311,10 +311,11 @@ export class AddTradePanel {
         symRow = null;
         return;
       }
-      const size =
-        symbol === instrument.micro
+      const size = instrument.micro
+        ? symbol === instrument.micro
           ? `${instrument.micro} micro of ${instrument.mini}`
-          : `${instrument.mini} mini · ${instrument.micro} micro`;
+          : `${instrument.mini} mini · ${instrument.micro} micro`
+        : "1 lot";
       symNote.createSpan({
         text: `${instrument.label} — ${size} · $${perPoint} per point.`,
       });

@@ -1,13 +1,9 @@
 {
-	"id": "tradebook",
-	"name": "Tradebook",
-	"version": "1.1.1",
+	"id": "tradebook-cfd",
+	"name": "Tradebook CFD",
+	"version": "1.1.1-cfd.1",
 	"minAppVersion": "1.7.2",
-	"description": "Local futures journal: import Tradovate and TradeSea trades, capture chart prints, track accounts, and review decisions.",
-	"author": "YamiHugo",
-	"isDesktopOnly": false,
-	"fundingUrl": {
-		"Buy me a coffee": "https://www.buymeacoffee.com/yamihugo",
-		"Ko-fi": "https://ko-fi.com/yamihugo"
-	}
+	"description": "Local futures and CFD journal: RoboForex CFDs priced out of the box (forex, metals, indices, energies, crypto), plus manual futures entry. Fork of yamihugo/Tradebook.",
+	"author": "egemen (fork of yamihugo/Tradebook)",
+	"isDesktopOnly": false
 }

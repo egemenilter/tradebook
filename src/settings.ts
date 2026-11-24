@@ -450,7 +450,7 @@ export class SettingsTab extends PluginSettingTab {
   private renderDefaultSymbol(containerEl: HTMLElement): void {
     const s = this.plugin.settings;
     const contracts: string[] = [];
-    for (const inst of CORE_INSTRUMENTS) for (const sym of [inst.mini, inst.micro]) contracts.push(sym);
+    for (const inst of CORE_INSTRUMENTS) for (const sym of inst.micro ? [inst.mini, inst.micro] : [inst.mini]) contracts.push(sym);
     this.settingRow(containerEl, "tag", "Default symbol", "Pre-fill the contract on a new manual trade. You can change it per trade; turning this off clears the pre-fill.")
       .addToggle((tg) => {
         tg.setValue(!!s.defaultSymbol).onChange(async (v) => {
@@ -544,8 +544,8 @@ export class SettingsTab extends PluginSettingTab {
     for (const instrument of CORE_INSTRUMENTS) {
       const family = containerEl.createDiv({ cls: "tj-set-riskfam" });
       family.createSpan({ cls: "tj-set-riskfam-name", text: instrument.label });
-      family.createSpan({ cls: "tj-set-riskfam-pair", text: `${instrument.mini} / ${instrument.micro}` });
-      for (const symbol of [instrument.mini, instrument.micro]) {
+      family.createSpan({ cls: "tj-set-riskfam-pair", text: instrument.micro ? `${instrument.mini} / ${instrument.micro}` : instrument.mini });
+      for (const symbol of instrument.micro ? [instrument.mini, instrument.micro] : [instrument.mini]) {
         const spec = futuresSpec(symbol);
         const row = containerEl.createDiv({ cls: "tj-set-riskrow" });
         const name = row.createDiv({ cls: "tj-set-riskname" });

@@ -16,6 +16,60 @@ export interface AccountRule {
  * Nothing here prices a trade: what a fill actually cost comes from the
  * platform's own cash history, line by line (see parseCashHistoryCsv).
  */
+/**
+ * CFD instruments, priced per RoboForex contract specifications
+ * (roboforex.com/forex-trading/trading/specifications). Same shape as a
+ * futures contract: `pointValue` is the money a 1.0 price-unit move makes on
+ * ONE LOT, so the journal's pricing math (risk from prices, R multiples)
+ * works unchanged — the trader just types lots as quantity.
+ *
+ * Quoted only in USD pairs: a JPY-quoted pair (USDJPY…) prices its P&L in
+ * yen, which the journal would show as dollars, so it is left out rather
+ * than silently wrong.
+ *
+ * RoboForex names its index CFDs `.US30Cash` and friends on the platform;
+ * the friendly roots are typed here and resolve by prefix (see rootSymbol).
+ */
+const CFD_SPECS: Record<string, FuturesSpec> = {
+  // ---- forex, USD-quoted majors (1 lot = 100 000, pip 0.0001 = $10) ----
+  EURUSD: { name: "Euro / US Dollar", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
+  GBPUSD: { name: "British Pound / US Dollar", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
+  AUDUSD: { name: "Australian Dollar / US Dollar", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
+  NZDUSD: { name: "New Zealand Dollar / US Dollar", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
+  USDCAD: { name: "US Dollar / Canadian Dollar", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
+  USDCHF: { name: "US Dollar / Swiss Franc", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
+
+  // ---- metals (1 Pip Size 0.01; XAUUSD 1 lot = 100 oz, XAGUSD 5000 oz) ----
+  XAUUSD: { name: "Gold (spot CFD)", exchange: "RoboForex", group: "metal", pointValue: 100, tickSize: 0.01, tickValue: 1 },
+  XAGUSD: { name: "Silver (spot CFD)", exchange: "RoboForex", group: "metal", pointValue: 5000, tickSize: 0.01, tickValue: 50 },
+
+  // ---- index CFDs (1 lot = 1 contract, pip size 1, tick 0.1 = $0.10) ----
+  US30: { name: "US 30 / Dow (index CFD)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  US500: { name: "US 500 / S&P (index CFD)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  USTEC: { name: "US Tech / Nasdaq 100 (index CFD)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  DE40: { name: "DE 40 / DAX (index CFD)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  JP225: { name: "JP 225 / Nikkei (index CFD)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  // Platform aliases: the same markets under the names the platform itself
+  // lists (US500Cash on the spec sheet, GER40 on the market watch). Keys are
+  // uppercase because symbols are read uppercased (see rootSymbol) — the
+  // trader may type `US30Cash` or `US30CASH`, both land here.
+  GER40: { name: "DE 40 / DAX (alias of DE40)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  NAS100: { name: "US Tech / Nasdaq 100 (alias of USTEC)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  US30CASH: { name: "US 30 / Dow (alias of US30)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  US500CASH: { name: "US 500 / S&P (alias of US500)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  USTECHCASH: { name: "US Tech / Nasdaq 100 (alias of USTEC)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  DE40CASH: { name: "DE 40 / DAX (alias of DE40)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+  JP225CASH: { name: "JP 225 / Nikkei (alias of JP225)", exchange: "RoboForex", group: "equity", pointValue: 1, tickSize: 0.1, tickValue: 0.1 },
+
+  // ---- energies (1 lot = 1000 barrels, tick 0.01 = $10) ----
+  BRENT: { name: "Brent Crude (spot CFD)", exchange: "RoboForex", group: "energy", pointValue: 1000, tickSize: 0.01, tickValue: 10 },
+  WTI: { name: "WTI Crude (spot CFD)", exchange: "RoboForex", group: "energy", pointValue: 1000, tickSize: 0.01, tickValue: 10 },
+
+  // ---- crypto (BTCUSD 1 lot = 1 coin, ETHUSD 1 lot = 10 coins) ----
+  BTCUSD: { name: "Bitcoin (spot CFD)", exchange: "RoboForex", group: "crypto", pointValue: 1, tickSize: 0.01, tickValue: 0.01 },
+  ETHUSD: { name: "Ethereum (spot CFD)", exchange: "RoboForex", group: "crypto", pointValue: 10, tickSize: 0.01, tickValue: 0.1 },
+};
+
 const FUTURES_SPECS: Record<string, FuturesSpec> = {
   // ---- CME equity index ----
   NQ: { name: "E-mini Nasdaq 100", exchange: "CME", group: "equity", kind: "mini", micro: "MNQ", pointValue: 20, tickSize: 0.25, tickValue: 5 },
@@ -81,6 +135,8 @@ const FUTURES_SPECS: Record<string, FuturesSpec> = {
   // ---- crypto (micros only — that is what the exchanges list) ----
   MBT: { name: "Micro Bitcoin", exchange: "CME", group: "crypto", kind: "micro", pointValue: 0.1, tickSize: 5, tickValue: 0.5 },
   MET: { name: "Micro Ether", exchange: "CME", group: "crypto", kind: "micro", pointValue: 0.1, tickSize: 0.5, tickValue: 0.05 },
+
+  ...CFD_SPECS,
 };
 
 const UNKNOWN_SPEC: FuturesSpec = { pointValue: 1, tickSize: 0, tickValue: 0 };
@@ -99,14 +155,18 @@ export interface CoreInstrument {
   /** The standard contract. */
   mini: string;
   /** The micro contract: same market, a fraction of the size — a tenth for
-   *  most instruments, a fifth for silver. */
-  micro: string;
+   *  most instruments, a fifth for silver. CFD instruments have no size pair:
+   *  one lot is the whole market, so `micro` is left off and the picker shows
+   *  a single line. */
+  micro?: string;
 }
 
-/** Six instruments, twelve contracts. Ordered by how often they are traded, so
- *  the picker opens on what a trader reaches for. The rest of the registry
- *  (rates, ag, FX) is still priced — a typed or imported contract resolves here
- *  — but it is not what the journal suggests. */
+/** Six futures instruments, twelve contracts — then the CFD side of the
+ *  journal, RoboForex instruments (forex, metals, indices, energies, crypto),
+ *  one size each. Ordered by how often they are traded, so the picker opens
+ *  on what a trader reaches for. The rest of the registry (rates, ag, FX
+ *  futures) is still priced — a typed or imported contract resolves here —
+ *  but it is not what the journal suggests. */
 export const CORE_INSTRUMENTS: CoreInstrument[] = [
   { id: "nasdaq", label: "Nasdaq 100", mini: "NQ", micro: "MNQ" },
   { id: "spx", label: "S&P 500", mini: "ES", micro: "MES" },
@@ -114,11 +174,30 @@ export const CORE_INSTRUMENTS: CoreInstrument[] = [
   { id: "crude", label: "Crude Oil", mini: "CL", micro: "MCL" },
   { id: "silver", label: "Silver", mini: "SI", micro: "SIL" },
   { id: "russell", label: "Russell 2000", mini: "RTY", micro: "M2K" },
+
+  // ---- CFDs, RoboForex ----
+  { id: "xauusd", label: "Gold CFD (XAUUSD)", mini: "XAUUSD" },
+  { id: "xagusd", label: "Silver CFD (XAGUSD)", mini: "XAGUSD" },
+  { id: "eurusd", label: "EUR/USD", mini: "EURUSD" },
+  { id: "gbpusd", label: "GBP/USD", mini: "GBPUSD" },
+  { id: "audusd", label: "AUD/USD", mini: "AUDUSD" },
+  { id: "nzdusd", label: "NZD/USD", mini: "NZDUSD" },
+  { id: "usdcad", label: "USD/CAD", mini: "USDCAD" },
+  { id: "usdchf", label: "USD/CHF", mini: "USDCHF" },
+  { id: "us30", label: "US 30 / Dow CFD", mini: "US30" },
+  { id: "us500", label: "US 500 / S&P CFD", mini: "US500" },
+  { id: "ustec", label: "US Tech / Nasdaq CFD", mini: "USTEC" },
+  { id: "de40", label: "DE 40 / DAX CFD", mini: "DE40" },
+  { id: "jp225", label: "JP 225 / Nikkei CFD", mini: "JP225" },
+  { id: "brent", label: "Brent Crude CFD", mini: "BRENT" },
+  { id: "wti", label: "WTI Crude CFD", mini: "WTI" },
+  { id: "btcusd", label: "Bitcoin CFD", mini: "BTCUSD" },
+  { id: "ethusd", label: "Ethereum CFD", mini: "ETHUSD" },
 ];
 
-/** The twelve core contracts, in instrument order (mini then micro). This is
- *  what the journal supports: the picker suggests these and nothing else. */
-export const CORE_SYMBOLS: string[] = CORE_INSTRUMENTS.flatMap((i) => [i.mini, i.micro]);
+/** Every contract a picker suggests: both sizes of a futures instrument,
+ *  the one size of a CFD. */
+export const CORE_SYMBOLS: string[] = CORE_INSTRUMENTS.flatMap((i) => (i.micro ? [i.mini, i.micro] : [i.mini]));
 
 /** "NQ (mini)" / "MNQ (micro)" — the size, since that is what moves the money. */
 export function contractLabel(symbol: string): string {
@@ -176,14 +255,16 @@ export function futuresSpec(symbol: string): FuturesSpec {
   return FUTURES_SPECS[rootSymbol(symbol)] ?? UNKNOWN_SPEC;
 }
 
-/** A recognised monetary specification, or null instead of the $1 fallback. */
+/** A recognised monetary specification, or null instead of the $1 fallback.
+ *  A platform suffix is tolerated on a priced root — Pro accounts name their
+ *  pairs `XAUUSD.p`, so `XAUUSD.P` prices as XAUUSD. */
 export function knownFuturesSpec(symbol: string): FuturesSpec | null {
   const normalized = (symbol || "").trim().toUpperCase();
   const root = rootSymbol(normalized);
   const spec = FUTURES_SPECS[root];
   if (!spec) return null;
   const suffix = normalized.slice(root.length);
-  return suffix === "" || /^[FGHJKMNQUVXZ]\d{1,2}$/.test(suffix) ? spec : null;
+  return suffix === "" || /^[FGHJKMNQUVXZ]\d{1,2}$/.test(suffix) || /^\.[A-Z]+$/.test(suffix) ? spec : null;
 }
 
 /** The micro version of a mini, when one exists (NQ → MNQ). */

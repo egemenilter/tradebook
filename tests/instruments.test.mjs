@@ -23,19 +23,23 @@ const {
   `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`
 );
 
-// ---- the core: six instruments, twelve contracts -------------------------
+// ---- the core: six futures instruments in two sizes, then the CFD side ----
 
-test("the core is six instruments in two sizes each", () => {
-  assert.equal(CORE_INSTRUMENTS.length, 6);
-  assert.equal(CORE_SYMBOLS.length, 12);
+test("the core futures section is six instruments in two sizes each", () => {
+  const FUTURES = CORE_INSTRUMENTS.filter((i) => i.micro);
+  const CFD = CORE_INSTRUMENTS.filter((i) => !i.micro);
+  assert.equal(FUTURES.length, 6);
+  assert.ok(CFD.length > 0, "the CFD instruments are part of the core");
+  assert.equal(CORE_SYMBOLS.length, 12 + CFD.length);
   assert.deepEqual(
-    CORE_INSTRUMENTS.map((i) => i.mini),
+    FUTURES.map((i) => i.mini),
     ["NQ", "ES", "GC", "CL", "SI", "RTY"]
   );
   assert.deepEqual(
-    CORE_INSTRUMENTS.map((i) => i.micro),
+    FUTURES.map((i) => i.micro),
     ["MNQ", "MES", "MGC", "MCL", "SIL", "M2K"]
   );
+  for (const instrument of CFD) assert.equal(instrument.micro, undefined, `${instrument.mini} is a CFD and has one size`);
 });
 
 // ---- sizes, not names: the micro is a tenth of the mini -----------------
@@ -46,7 +50,7 @@ test("the core is six instruments in two sizes each", () => {
 const MICRO_RATIO = { NQ: 10, MNQ: 10, ES: 10, MES: 10, GC: 10, MGC: 10, CL: 10, MCL: 10, SI: 5, SIL: 5, RTY: 10, M2K: 10 };
 
 test("each micro is the fraction of its mini the exchange set, with the same tick", () => {
-  for (const instrument of CORE_INSTRUMENTS) {
+  for (const instrument of CORE_INSTRUMENTS.filter((i) => i.micro)) {
     const mini = futuresSpec(instrument.mini);
     const micro = futuresSpec(instrument.micro);
     assert.equal(mini.micro, instrument.micro, `${instrument.mini} does not name its micro`);
@@ -113,7 +117,7 @@ test("risk in dollars differs by size: 10 points on NQ is not 10 points on MNQ",
 // ---- mini and micro are one instrument in the picker ---------------------
 
 test("a mini and its micro resolve to the same instrument", () => {
-  for (const instrument of CORE_INSTRUMENTS) {
+  for (const instrument of CORE_INSTRUMENTS.filter((i) => i.micro)) {
     assert.equal(coreInstrumentOf(instrument.mini)?.id, instrument.id);
     assert.equal(coreInstrumentOf(instrument.micro)?.id, instrument.id);
     // a dated contract root still resolves
@@ -132,10 +136,10 @@ test("the label carries the size, since that is what moves the money", () => {
 // ---- the picker is the core; the registry prices more than it suggests ----
 
 test("the picker suggests the core and nothing else", () => {
-  // What the journal supports is what the field offers: the twelve core
-  // contracts, once each, in instrument order.
+  // What the journal supports is what the field offers: both sizes of a
+  // futures instrument and the one size of a CFD, once each, in instrument order.
   assert.equal(new Set(CORE_SYMBOLS).size, CORE_SYMBOLS.length, "duplicate contract in the picker");
-  assert.deepEqual(CORE_SYMBOLS, CORE_INSTRUMENTS.flatMap((i) => [i.mini, i.micro]));
+  assert.deepEqual(CORE_SYMBOLS, CORE_INSTRUMENTS.flatMap((i) => (i.micro ? [i.mini, i.micro] : [i.mini])));
 });
 
 test("the registry still prices everything the picker does not suggest", () => {
