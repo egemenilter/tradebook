@@ -5,7 +5,7 @@ import { renderAppShell } from "../ui";
 import { fmtMoney, fmtMoney2, fmtMoneyAbs, fmtPrice } from "../tz";
 import { formatDate } from "../lib/dates";
 import { legBaseKey } from "../lib/copy";
-import { setTradeMistakeTags, updateTradeArrayFields, updateTradeFields, updateTradeScreenshots, setTradeStrategy } from "../storage";
+import { setTradeMistakeTags, setTradeFields, updateTradeArrayFields, updateTradeFields, updateTradeScreenshots, setTradeStrategy } from "../storage";
 import { normalizeTags, reviewOptions, reviewTagGroups } from "../lib/tags";
 
 /**
@@ -356,6 +356,44 @@ export class TradeDetailView extends ItemView {
       missedNote.createSpan({
         text: "Missed — a setup you identified but did not take. Every number below is what it would have been, and it counts in no statistic.",
       });
+      // Why it was not taken: one click to record, saved into the note.
+      const reasonWrap = missedNote.createDiv({ cls: "tj-td-missed-reason" });
+      reasonWrap.createSpan({ cls: "tj-td-missed-reason-l", text: "Reason" });
+      const reasonItems: DropdownItem[] = [
+        { id: "__none__", label: "No reason recorded" },
+        { id: "Waited for news", label: "Waited for news" },
+        { id: "Risk too big", label: "Risk too big" },
+        { id: "Too late", label: "Too late" },
+        { id: "Off plan", label: "Off plan" },
+        { id: "__other__", label: "Other…" },
+      ];
+      if (t.missedReason && !reasonItems.some((r) => r.id === t.missedReason)) {
+        reasonItems.splice(1, 0, { id: t.missedReason, label: t.missedReason });
+      }
+      mountDropdown(
+        reasonWrap,
+        reasonItems,
+        t.missedReason || "__none__",
+        (id) => {
+          void (async () => {
+            let v = "";
+            if (id === "__other__") {
+              v = (window.prompt("Why was it missed?") || "").trim();
+              if (!v) return;
+            } else if (id !== "__none__") {
+              v = id;
+            }
+            if (t.id) {
+              const ok = await setTradeFields(this.plugin.app, t.id, { missed_reason: v });
+              if (!ok) new Notice("Could not write the note.");
+            }
+            if (v) t.missedReason = v;
+            else delete t.missedReason;
+            this.render();
+          })();
+        },
+        { placeholder: "No reason recorded" }
+      );
     }
     const head = top.createDiv({ cls: "tj-td-head" });
 

@@ -4,6 +4,7 @@ import { PropAccount, Trade } from "../types";
 import { accountFilters, renderAppShell } from "../ui";
 import { firmLabel as catalogLabel } from "../lib/firmLogos";
 import { fmtMoney2, fmtMoneyAbs, fmtMoneyCompact, isFiniteNumber, todayKey, zoneWallParts } from "../tz";
+import { toneClass } from "../lib/fills";
 import { attachTip } from "../lib/tip";
 
 import { netPnl } from "../lib/fees";
@@ -129,6 +130,7 @@ export const CARD_TITLES: Record<string, string> = {
   calendar: "Calendar",
   heatmap: "Trading Activity",
   breakdown: "Breakdown",
+  missed: "Missed Setups",
   rmultiples: "R-Multiples",
   score: "Trading Score & Radar",
   focus: "Focus Areas",
@@ -173,7 +175,7 @@ const HOME_METRICS = HOME_METRIC_MENU_GROUPS.flatMap((group) => group.ids);
  */
 const HOME_WIDGET_MENU_GROUPS: Array<{ title: string; ids: string[] }> = [
   { title: "Performance", ids: ["netpnl", "longpnl", "shortpnl", "costs", "drawdown", "size"] },
-  { title: "Origin", ids: ["breakdown", "rmultiples", "trends"] },
+  { title: "Origin", ids: ["breakdown", "rmultiples", "trends", "missed"] },
   { title: "Process and time", ids: ["calendar", "heatmap", "score", "focus", "tags", "tilt", "revenge"] },
   { title: "Accounts and cash", ids: ["accounts", "payouts"] },
 ];
@@ -2618,6 +2620,7 @@ export abstract class WidgetGridView extends ItemView {
           switch (item.i) {
             case "netpnl": this.renderEquityBody(body, trades, undefined, "analytics-net-pnl"); break;
             case "breakdown": this.renderBreakdownWidget(body, trades, header); break;
+            case "missed": this.renderMissedWidget(body); break;
             case "rmultiples": this.renderRMultiplesWidget(body, trades, header); break;
             case "score": this.renderScoreWidget(body, recentScore.trades, recentScore.label, header); break;
             case "heatmap": this.renderHeatmap(body, homeBase ?? trades, homeCounted ?? counted, isHome ? asOf : undefined, header); break;
@@ -4842,6 +4845,41 @@ export abstract class WidgetGridView extends ItemView {
    * by activity; the timelines (Weekday · Hour · Session) read chronologically
    * and show every bucket that has trades. The selected tab is persisted.
    */
+  /** Missed setups, newest first: visible on Home, counted in nothing. */
+  renderMissedWidget(body: HTMLElement): void {
+    void this.plugin.loadMissedTrades().then((missed) => {
+      body.empty();
+      if (!missed.length) {
+        body.createDiv({
+          cls: "tj-empty",
+          text: "No missed setups yet — the Missed toggle in the trade panel records them.",
+        });
+        return;
+      }
+      const sorted = [...missed].sort((a, b) => `${b.date} ${b.entryTime}`.localeCompare(`${a.date} ${a.entryTime}`));
+      const list = body.createDiv({ cls: "tj-strat-recent" });
+      for (const t of sorted.slice(0, 5)) {
+        const row = list.createDiv({ cls: "tj-strat-recent-row" });
+        row.createSpan({ cls: "tj-strat-recent-date", text: t.date.slice(5) });
+        row.createSpan({ cls: "tj-strat-recent-sym", text: `${t.symbol} ${t.direction === "long" ? "▲" : "▼"}` });
+        if (t.missedReason) {
+          const r = row.createSpan({ cls: "tj-missed-reason", text: t.missedReason });
+          r.setAttr("title", "Why it was not taken");
+        }
+        const p = row.createSpan({ cls: "tj-strat-recent-pnl " + toneClass(t.pnl) });
+        p.setText(fmtMoney2(t.pnl));
+        row.setAttr("title", "Open the trade");
+        row.addEventListener("click", () => void this.plugin.openTradeDetail({ id: t.id }));
+      }
+      const total = sorted.reduce((sum, t) => sum + (Number.isFinite(t.pnl) ? t.pnl : 0), 0);
+      const foot = body.createDiv({ cls: "tj-missed-total" });
+      foot.createSpan({ text: `${sorted.length} missed · would-have-been` });
+      const v = foot.createSpan({ cls: "tj-missed-total-v " + toneClass(total) });
+      v.setText(total === 0 ? "—" : fmtMoney2(total));
+      foot.setAttr("title", "Hypothetical: never counted in the totals");
+    });
+  }
+
   renderBreakdownWidget(body: HTMLElement, trades: Trade[], header?: HTMLElement): void {
     const zone = this.plugin.settings.timeZone;
     const weekdayOf = (t: Trade): string => {

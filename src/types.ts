@@ -119,6 +119,9 @@ export interface Trade {
   /** Frontmatter `type` — `trade` for a normal trade (reserved: `missed`,
    *  `backtest`). The plugin discovers notes by this key, not by folder. */
   type?: string;
+  /** Why a missed setup was not taken (`type: missed` only). Free text the
+   *  trader owns; the picker suggests the house list. */
+  missedReason?: string;
   date: string; // YYYY-MM-DD (entry date)
   entryTime: string;
   exitTime: string;

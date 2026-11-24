@@ -411,8 +411,42 @@ export class AddTradePanel {
       if (on) t.type = "missed";
       else delete t.type;
       missedBtn.toggleClass("on", on);
+      fReason.toggleClass("is-hidden", !on);
       paint();
     });
+
+    // ---- Missed reason (why it was not taken) ----
+    const fReason = field("Reason");
+    const reasonItems: DropdownItem[] = [
+      { id: "__none__", label: "No reason recorded" },
+      { id: "Waited for news", label: "Waited for news" },
+      { id: "Risk too big", label: "Risk too big" },
+      { id: "Too late", label: "Too late" },
+      { id: "Off plan", label: "Off plan" },
+      { id: "__other__", label: "Other…" },
+    ];
+    if (t.missedReason && !reasonItems.some((r) => r.id === t.missedReason)) {
+      reasonItems.splice(1, 0, { id: t.missedReason, label: t.missedReason });
+    }
+    mountDropdown(
+      fReason.createDiv({ cls: "tj-add-ctl" }),
+      reasonItems,
+      t.missedReason || "__none__",
+      (id) => {
+        if (id === "__other__") {
+          const name = window.prompt("Why was it missed?");
+          if (!name || !name.trim()) return;
+          t.missedReason = name.trim();
+        } else if (id === "__none__") {
+          delete t.missedReason;
+        } else {
+          t.missedReason = id;
+        }
+        this.renderBody();
+      },
+      { placeholder: "No reason recorded" }
+    );
+    fReason.toggleClass("is-hidden", t.type !== "missed");
 
     // ---- Quantity ----
     const fQty = field("Quantity");

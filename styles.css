@@ -13943,3 +13943,117 @@ justify-content: space-between;
   color: var(--text-muted, #9aa0a6);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- Period control ---- */
+
+.tj-strat-period {
+  display: flex;
+  gap: 0;
+  margin-bottom: 10px;
+  width: fit-content;
+  border: 1px solid color-mix(in srgb, var(--text-muted, #9aa0a6) 22%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tj-strat-period .tj-add-seg-btn {
+  border-radius: 0;
+  border: none;
+  font-size: 11.5px;
+  padding: 5px 12px;
+}
+
+/* ---- Compare ---- */
+
+.tj-strat-compare-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--text-muted, #9aa0a6) 30%, transparent);
+}
+
+.tj-strat-compare-l {
+  font-size: 12px;
+  color: var(--text-muted, #9aa0a6);
+}
+
+.tj-strat-compare-pick {
+  min-width: 200px;
+}
+
+.tj-strat-compare-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.tj-strat-compare-name {
+  font-weight: 600;
+  font-size: 12.5px;
+  margin-bottom: 4px;
+}
+
+.tj-strat-compare-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-muted, #9aa0a6) 10%, transparent);
+}
+
+.tj-strat-compare-v {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Two lines on the compare chart, told apart by colour. */
+.tj-strat-chart .tj-strat-chart-line.is-a { stroke: #4a9eda; }
+.tj-strat-chart .tj-strat-chart-line.is-b { stroke: #d98a4a; }
+
+/* ---- Missed widget on Home ---- */
+
+.tj-missed-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--text-muted, #9aa0a6) 16%, transparent);
+  font-size: 11.5px;
+  color: var(--text-muted, #9aa0a6);
+}
+
+.tj-missed-total-v {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-style: italic;
+}
+
+.tj-missed-reason {
+  font-size: 11px;
+  color: var(--text-muted, #9aa0a6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Missed reason row on the trade page banner. */
+.tj-td-missed-reason {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.tj-td-missed-reason-l {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #9aa0a6);
+}

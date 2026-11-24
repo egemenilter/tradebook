@@ -1,11 +1,12 @@
 import { ItemView, Notice, setIcon, type WorkspaceLeaf } from "obsidian";
 import type TradebookPlugin from "../main";
 import { renderAppShell } from "../ui";
-import { fmtMoney } from "../tz";
+import { fmtMoney, todayKey } from "../tz";
 import { toneClass } from "../lib/fills";
 import { attachTip } from "../lib/tip";
 import { netPnl } from "../lib/fees";
 import { tradeR } from "../lib/tradeTable";
+import { mountDropdown, type DropdownItem } from "../lib/dropdown";
 import type { Trade } from "../types";
 
 export const SETUPS_VIEW_TYPE = "tradebook-setups-view";
@@ -96,6 +97,53 @@ function cumulativeChart(el: HTMLElement, series: Trade[]): void {
   el.appendChild(svg);
 }
 
+/** Two cumulative lines on one axis — the compare page's chart. */
+function compareChart(el: HTMLElement, seriesList: Array<{ series: Trade[]; cls: string }>): void {
+  const usable = seriesList.filter((s) => s.series.length >= 2);
+  if (!usable.length) {
+    el.createSpan({ cls: "tj-strat-chart-empty", text: "A curve needs two trades." });
+    return;
+  }
+  const w = 320;
+  const h = 96;
+  const pad = 5;
+  const cums = usable.map((s) => {
+    const out: number[] = [];
+    let acc = 0;
+    for (const t of s.series) {
+      acc += netPnl(t);
+      out.push(acc);
+    }
+    return out;
+  });
+  const flat = cums.flat();
+  const min = Math.min(0, ...flat);
+  const max = Math.max(0, ...flat);
+  const span = max - min || 1;
+  const y = (v: number): number => pad + (h - 2 * pad) * (1 - (v - min) / span);
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("class", "tj-strat-chart");
+  const zeroLine = document.createElementNS(svgNS, "line");
+  zeroLine.setAttribute("x1", String(pad));
+  zeroLine.setAttribute("x2", String(w - pad));
+  zeroLine.setAttribute("y1", y(0).toFixed(1));
+  zeroLine.setAttribute("y2", y(0).toFixed(1));
+  svg.appendChild(zeroLine);
+  usable.forEach((s, i) => {
+    const cum = cums[i];
+    const x = (j: number): number => pad + (j * (w - 2 * pad)) / (cum.length - 1);
+    const polyline = document.createElementNS(svgNS, "polyline");
+    polyline.setAttribute("points", cum.map((v, j) => `${x(j).toFixed(1)},${y(v).toFixed(1)}`).join(" "));
+    polyline.setAttribute("class", `tj-strat-chart-line ${s.cls}`.trim());
+    polyline.setAttribute("data-line", String(i));
+    svg.appendChild(polyline);
+  });
+  el.appendChild(svg);
+}
+
 /**
  * Strategies — registering the names you trade under. A name is enough to file
  * every trade under one, and each registration also leaves a note in
@@ -111,6 +159,10 @@ export class SetupsView extends ItemView {
   private selected: string | null = null;
   private rulesEditing = false;
   private focusTarget: HTMLInputElement | null = null;
+  /** The stats window: every number on the page reads through it. */
+  private period: "all" | "month" | "year" = "all";
+  /** The other strategy shown beside this one, when comparing. */
+  private compareWith: string | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: TradebookPlugin) {
     super(leaf);
@@ -169,8 +221,10 @@ export class SetupsView extends ItemView {
       // so there is never an explicit scope here: with the setting on, demo
       // trades and archived accounts stay out of these totals.
       const excludeDemos = this.plugin.settings.excludeDemosFromPortfolio !== false;
+      const prefix = this.period === "month" ? todayKey(this.plugin.settings.timeZone).slice(0, 7) : this.period === "year" ? todayKey(this.plugin.settings.timeZone).slice(0, 4) : "";
+      const inPeriod = (t: Trade): boolean => !prefix || t.date.startsWith(prefix);
       const usable = trades.filter(
-        (t) => !this.plugin.isArchivedTrade(t) && !(excludeDemos && this.plugin.resolveAccountType(t.account) === "demo") && Number.isFinite(t.pnl)
+        (t) => inPeriod(t) && !this.plugin.isArchivedTrade(t) && !(excludeDemos && this.plugin.resolveAccountType(t.account) === "demo") && Number.isFinite(t.pnl)
       );
       for (const t of usable) {
         const name = (t.setup || "").trim();
@@ -195,6 +249,7 @@ export class SetupsView extends ItemView {
       // Missed setups filed under the strategy: visible, never counted.
       try {
         for (const t of await this.plugin.loadMissedTrades()) {
+          if (!inPeriod(t)) continue;
           const name = (t.setup || "").trim();
           if (!name) continue;
           const s = statOf(name);
@@ -227,12 +282,35 @@ export class SetupsView extends ItemView {
     }
   }
 
+  /** The stats window as three quiet buttons, shared by both pages. */
+  private renderPeriodControl(main: HTMLElement): void {
+    const seg = main.createDiv({ cls: "tj-strat-period" });
+    const opts: Array<["all" | "month" | "year", string]> = [
+      ["all", "All time"],
+      ["month", "This month"],
+      ["year", "This year"],
+    ];
+    for (const [id, label] of opts) {
+      const b = seg.createEl("button", {
+        cls: "tj-add-seg-btn" + (this.period === id ? " on" : ""),
+        text: label,
+        attr: { type: "button" },
+      });
+      b.addEventListener("click", () => {
+        if (this.period === id) return;
+        this.period = id;
+        void this.render();
+      });
+    }
+  }
+
   private async renderOverview(main: HTMLElement): Promise<void> {
     main.createEl("h1", { text: "Strategies", cls: "tj-view-h1" });
     main.createEl("p", {
       cls: "tj-view-intro",
       text: "Name the strategies you trade so every trade can be filed under one. Open a card for the strategy's own numbers, rules and recent trades.",
     });
+    this.renderPeriodControl(main);
 
     const stats = await this.collectStats();
 
@@ -431,6 +509,7 @@ export class SetupsView extends ItemView {
       this.rulesEditing = false;
       void this.render();
     });
+    this.renderPeriodControl(nav);
 
     const titleRow = main.createDiv({ cls: "tj-strat-detail-head" });
     const titleBlock = titleRow.createDiv({ cls: "tj-strat-detail-title" });
@@ -543,6 +622,74 @@ export class SetupsView extends ItemView {
         rowEl.addEventListener("click", () => void this.plugin.openTradeDetail({ id: t.id }));
       }
     }
+
+    // ---- Compare ----
+    if (this.compareWith) {
+      this.renderCompare(main, name, this.compareWith, stats);
+    } else {
+      const others = [...stats.keys()].filter((k) => k !== name.toLowerCase() && (stats.get(k)?.n ?? 0) > 0);
+      if (others.length) {
+        const bar = main.createDiv({ cls: "tj-strat-compare-bar" });
+        bar.createSpan({ cls: "tj-strat-compare-l", text: "Compare with" });
+        const items: DropdownItem[] = others.map((k) => ({ id: k, label: this.strategyLabel(k) }));
+        mountDropdown(
+          bar.createDiv({ cls: "tj-strat-compare-pick" }),
+          items,
+          "",
+          (id) => {
+            this.compareWith = id;
+            void this.render();
+          },
+          { placeholder: "Pick a strategy" }
+        );
+      }
+    }
+  }
+
+  /** The registry's own spelling of a stat key, or the key itself. */
+  private strategyLabel(k: string): string {
+    const rec = (this.plugin.settings.strategies ?? []).find((s) => s.name.trim().toLowerCase() === k);
+    return rec?.name ?? k;
+  }
+
+  /** Two strategies side by side: the same numbers, twice, one curve each. */
+  private renderCompare(main: HTMLElement, name: string, otherName: string, stats: Map<string, StratStat>): void {
+    const a = stats.get(name.toLowerCase()) ?? emptyStat();
+    const b = stats.get(otherName.toLowerCase()) ?? emptyStat();
+    const labelOf = (k: string): string => this.strategyLabel(k);
+    const card = main.createDiv({ cls: "tj-strat-card" });
+    const head = card.createDiv({ cls: "tj-strat-card-head" });
+    head.createDiv({ cls: "tj-strat-card-title", text: `${labelOf(name)} vs ${labelOf(otherName)}` });
+    const clear = head.createEl("button", { cls: "tj-btn tj-mini", text: "✕ close" });
+    clear.addEventListener("click", () => {
+      this.compareWith = null;
+      void this.render();
+    });
+
+    const cols = card.createDiv({ cls: "tj-strat-compare-cols" });
+    const column = (s: StratStat, label: string): void => {
+      const col = cols.createDiv({ cls: "tj-strat-compare-col" });
+      col.createDiv({ cls: "tj-strat-compare-name", text: label });
+      const pair = (l: string, v: string, cls = ""): void => {
+        const row = col.createDiv({ cls: "tj-strat-compare-row" });
+        row.createSpan({ text: l });
+        row.createSpan({ cls: `tj-strat-compare-v ${cls}`.trim(), text: v });
+      };
+      pair("Trades", String(s.n));
+      pair("Net", s.n ? fmtMoney(s.net) : "—", s.n ? toneClass(s.net) : "");
+      pair("Win rate", s.n ? `${Math.round((s.wins / s.n) * 100)}%` : "—");
+      pair("Profit factor", s.n ? profitFactor(s) : "—");
+      pair("Avg R", s.n ? fmtAvgR(s.rSum, s.rN) : "—");
+      pair("Missed", s.missedN ? `${s.missedN} · ${fmtMoney(s.missedPnl)}` : "0");
+    };
+    column(a, labelOf(name));
+    column(b, labelOf(otherName));
+
+    const chartEl = card.createDiv({ cls: "tj-strat-chartbox" });
+    compareChart(chartEl, [
+      { series: a.series, cls: "is-a" },
+      { series: b.series, cls: "is-b" },
+    ]);
   }
 
   // -------------------------------------------------------------- registry --

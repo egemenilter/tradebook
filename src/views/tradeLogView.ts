@@ -132,6 +132,8 @@ interface TradeLogStats {
   pending: number;
   missingSetup: number;
   missingPrint: number;
+  /** Missed setups in view — a browse chip, not a gap to fix. */
+  missedCount: number;
 }
 
 /**
@@ -541,6 +543,7 @@ export class TradeLogView extends ItemView {
       list = list.filter((t) => ids.has(t.id));
     }
     if (this.lens) keepMatchingDecisions((rep) => this.lens!.test(rep));
+    if (this.missedOnly && !opts?.skipAttention) list = list.filter((t) => t.type === "missed");
     if (this.symbolFilter) list = list.filter((t) => (t.symbol || "").toUpperCase() === this.symbolFilter.toUpperCase());
     if (this.accountFilters.length) {
       const wanted = this.accountFilters
@@ -722,6 +725,7 @@ export class TradeLogView extends ItemView {
       pending: attentionRows.filter((r) => !reviewStatus(r.rep).complete).length,
       missingSetup: attentionRows.filter((r) => missingFlag(r.rep, "nosetup")).length,
       missingPrint: attentionRows.filter((r) => missingFlag(r.rep, "noprint")).length,
+      missedCount: attentionRows.filter((r) => r.rep.type === "missed").length,
     };
     this._stats = { key, value };
     return value;
@@ -1090,6 +1094,15 @@ export class TradeLogView extends ItemView {
         () => this.toggleQuality("noprint")
       );
     }
+    if (s.missedCount > 0) {
+      chip(
+        s.missedCount,
+        "Missed setups",
+        this.missedOnly,
+        "Setups you identified but did not take — visible here, counted in no statistic.",
+        () => (this.missedOnly = !this.missedOnly)
+      );
+    }
     if (!any) {
       row.addClass("is-clear");
       row.createSpan({ cls: "tj-attn-none", text: "Nothing waiting \u2014 every trade is reviewed and filed." });
@@ -1102,6 +1115,9 @@ export class TradeLogView extends ItemView {
       ? this.qualityFilters.filter((q) => q !== flag)
       : [...this.qualityFilters, flag];
   }
+
+  /** Show only missed setups — a browse filter, never a statistic. */
+  private missedOnly = false;
 
   /**
    * Update the selection without redrawing the table: the checkbox already flipped
@@ -1655,6 +1671,7 @@ export class TradeLogView extends ItemView {
     this.accountTypeFilter = "all";
     this.lens = null;
     this.qualityFilters = [];
+    this.missedOnly = false;
     this.reviewFilter = "all";
     this.rFilter = "all";
     this.period = "all";
