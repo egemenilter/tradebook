@@ -1,7 +1,7 @@
 import { ItemView, Notice, setIcon, type WorkspaceLeaf } from "obsidian";
 import type TradebookPlugin from "../main";
 import { renderAppShell } from "../ui";
-import { fmtMoney, todayKey } from "../tz";
+import { fmtMoney, fmtMoneyCompact, todayKey } from "../tz";
 import { toneClass } from "../lib/fills";
 import { attachTip } from "../lib/tip";
 import { netPnl } from "../lib/fees";
@@ -54,8 +54,22 @@ function streakLabel(series: Trade[]): string {
   return `${i}${first ? "W" : "L"} streak`;
 }
 
-/** Eight distinguishable line colours — one per strategy on the overview. */
-const LINE_COLORS = ["#4a9eda", "#d98a4a", "#3fb96f", "#c96fd9", "#e2c044", "#5bc8c8", "#e2699a", "#8aa2f0"];
+/** Chart drawing state — ids of gradients must be unique per document. */
+let chartSeq = 0;
+
+/** Friendly round numbers for the y axis: 1/2/5 steps of a decade. */
+function niceTicks(min: number, max: number, count = 5): number[] {
+  if (!(max > min)) return [min];
+  const raw = (max - min) / (count - 1);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+  const out: number[] = [];
+  for (let v = Math.floor(min / step) * step; v <= max + step * 0.001; v += step) {
+    out.push(Number(v.toFixed(10)));
+  }
+  return out;
+}
 
 /**
  * N cumulative lines on one axis, drawn the way a chart should look: dashed
@@ -66,10 +80,11 @@ const LINE_COLORS = ["#4a9eda", "#d98a4a", "#3fb96f", "#c96fd9", "#e2c044", "#5b
 function multiLineChart(
   el: HTMLElement,
   entries: Array<{ series: Trade[]; value?: (t: Trade) => number | null }>,
-  opts: { value?: (t: Trade) => number | null; fmt?: (v: number) => string } = {}
+  opts: { value?: (t: Trade) => number | null; fmt?: (v: number) => string; axisFmt?: (v: number) => string } = {}
 ): void {
   const valueOf = opts.value ?? netPnl;
   const fmt = opts.fmt ?? ((v: number): string => fmtMoney(v));
+  const axisFmt = opts.axisFmt ?? fmt;
   const usable = entries
     .map((e) => {
       const pts: Array<{ date: string; v: number }> = [];
@@ -89,7 +104,7 @@ function multiLineChart(
   }
   const w = 320;
   const h = 150;
-  const pad = 8;
+  const pad = 4;
   const cums = usable.map((pts) => {
     const out: number[] = [];
     let acc = 0;
@@ -109,8 +124,13 @@ function multiLineChart(
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("class", "tj-strat-chart");
-  // Gridlines: the range quartered, dashed and quiet, like a real chart grid.
-  for (const v of new Set([min, min + span / 3, min + (2 * span) / 3, max])) {
+  // The gradient each line's area fades with — from the line's colour at the
+  // top to almost nothing at the zero line.
+  const defs = document.createElementNS(svgNS, "defs");
+  svg.appendChild(defs);
+  // Gridlines at friendly round numbers; the zero line dashed over them.
+  for (const v of niceTicks(min, max, 5)) {
+    if (v === 0) continue;
     const gl = document.createElementNS(svgNS, "line");
     gl.setAttribute("x1", String(pad));
     gl.setAttribute("x2", String(w - pad));
@@ -119,7 +139,6 @@ function multiLineChart(
     gl.setAttribute("class", "grid");
     svg.appendChild(gl);
   }
-  // The zero reference, stronger than the grid.
   const zero = document.createElementNS(svgNS, "line");
   zero.setAttribute("x1", String(pad));
   zero.setAttribute("x2", String(w - pad));
@@ -140,12 +159,28 @@ function multiLineChart(
     const color = final > 0 ? "var(--tj-tone-good)" : final < 0 ? "var(--tj-tone-bad)" : "var(--text-muted)";
     const x = (j: number): number => pad + (j * (w - 2 * pad)) / (cum.length - 1);
     const toPts = (vals: number[]): string => vals.map((v, j) => `${x(j).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-    // The area under the line, translucent in the line's own colour.
+    // The area under the line, fading from the line's colour downward.
+    const grad = document.createElementNS(svgNS, "linearGradient");
+    grad.setAttribute("id", `tjgrad${chartSeq}_${i}`);
+    grad.setAttribute("x1", "0");
+    grad.setAttribute("y1", "0");
+    grad.setAttribute("x2", "0");
+    grad.setAttribute("y2", "1");
+    const s1 = document.createElementNS(svgNS, "stop");
+    s1.setAttribute("offset", "0");
+    s1.setAttribute("stop-color", color);
+    s1.setAttribute("stop-opacity", "0.30");
+    const s2 = document.createElementNS(svgNS, "stop");
+    s2.setAttribute("offset", "1");
+    s2.setAttribute("stop-color", color);
+    s2.setAttribute("stop-opacity", "0.02");
+    grad.appendChild(s1);
+    grad.appendChild(s2);
+    defs.appendChild(grad);
     const area = document.createElementNS(svgNS, "polygon");
     const zeroY = y(0).toFixed(1);
     area.setAttribute("points", `${toPts(cum)} ${x(cum.length - 1).toFixed(1)},${zeroY} ${pad},${zeroY}`);
-    area.setAttribute("fill", color);
-    area.setAttribute("fill-opacity", "0.10");
+    area.setAttribute("fill", `url(#tjgrad${chartSeq}_${i})`);
     area.setAttribute("stroke", "none");
     svg.appendChild(area);
     const polyline = document.createElementNS(svgNS, "polyline");
@@ -170,17 +205,19 @@ function multiLineChart(
       svg.appendChild(band);
     });
   });
-  el.appendChild(svg);
-  // Axis numbers at the range's ends and the zero line, printed beside the
-  // chart so the eye can read the scale, not just the shape.
-  el.addClass("has-axis");
-  const axisLabel = (v: number): void => {
-    const l = el.createDiv({ cls: "tj-chart-axislabel", text: fmt(v) });
-    l.style.top = `${((y(v) / h) * 100).toFixed(1)}%`;
-  };
-  axisLabel(max);
-  if (min !== max) axisLabel(min);
-  if (min < 0 && max > 0) axisLabel(0);
+  chartSeq++;
+  // The axes live around the svg as plain HTML: labels written into the svg
+  // would stretch with the viewBox, HTML ones never do.
+  const wrap = el.createDiv({ cls: "tj-chart-wrap" });
+  wrap.appendChild(svg);
+  const cssH = 200;
+  for (const v of niceTicks(min, max, 5)) {
+    const l = wrap.createDiv({ cls: "tj-chart-ylabel", text: axisFmt(v) });
+    l.style.top = `${((y(v) / h) * cssH).toFixed(0)}px`;
+  }
+  const maxN = Math.max(...usable.map((pts) => pts.length));
+  wrap.createDiv({ cls: "tj-chart-xlabel is-first", text: "#1" });
+  if (maxN > 1) wrap.createDiv({ cls: "tj-chart-xlabel is-last", text: `#${maxN}` });
 }
 
 /**
@@ -431,7 +468,8 @@ export class SetupsView extends ItemView {
       const chartEl = chartCard.createDiv({ cls: "tj-strat-chartbox" });
       multiLineChart(
         chartEl,
-        charted.map((s) => ({ series: s.series }))
+        charted.map((s) => ({ series: s.series })),
+        { axisFmt: fmtMoneyCompact }
       );
       const legend = chartCard.createDiv({ cls: "tj-strat-legend" });
       charted.forEach((s) => {
@@ -656,7 +694,11 @@ export class SetupsView extends ItemView {
       this.chartMode === "r"
         ? (v: number): string => `${v >= 0 ? "+" : ""}${v.toFixed(2)}R`
         : (v: number): string => fmtMoney(v);
-    multiLineChart(chartEl, [{ series: g.series }], { value: valueOf, fmt: fmtOf });
+    multiLineChart(chartEl, [{ series: g.series }], {
+      value: valueOf,
+      fmt: fmtOf,
+      axisFmt: this.chartMode === "r" ? fmtOf : fmtMoneyCompact,
+    });
     if (this.chartMode === "r") {
       chartEl.setAttr("title", "Cumulative R — trades without a recorded stop cannot sit on an R curve, so they are left out.");
     }
@@ -834,10 +876,11 @@ export class SetupsView extends ItemView {
     column(b, labelOf(otherName));
 
     const chartEl = card.createDiv({ cls: "tj-strat-chartbox" });
-    multiLineChart(chartEl, [
-      { series: a.series },
-      { series: b.series },
-    ]);
+    multiLineChart(
+      chartEl,
+      [{ series: a.series }, { series: b.series }],
+      { axisFmt: fmtMoneyCompact }
+    );
   }
 
   // -------------------------------------------------------------- registry --
