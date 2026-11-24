@@ -13963,6 +13963,14 @@ justify-content: space-between;
   padding: 5px 12px;
 }
 
+.tj-strat-period-count {
+  align-self: center;
+  padding: 0 10px;
+  font-size: 11px;
+  color: var(--text-muted, #9aa0a6);
+  white-space: nowrap;
+}
+
 /* ---- Compare ---- */
 
 .tj-strat-compare-bar {

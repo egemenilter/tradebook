@@ -282,8 +282,8 @@ export class SetupsView extends ItemView {
     }
   }
 
-  /** The stats window as three quiet buttons, shared by both pages. */
-  private renderPeriodControl(main: HTMLElement): void {
+  /** The stats window as three quiet buttons, plus the window's trade count. */
+  private renderPeriodControl(main: HTMLElement, stats: Map<string, StratStat>): void {
     const seg = main.createDiv({ cls: "tj-strat-period" });
     const opts: Array<["all" | "month" | "year", string]> = [
       ["all", "All time"],
@@ -302,6 +302,12 @@ export class SetupsView extends ItemView {
         void this.render();
       });
     }
+    // The window says what it holds: the count is how the eye knows the
+    // buttons did something, especially while every trade sits in one month.
+    const n = [...stats.values()].reduce((sum, s) => sum + s.n, 0);
+    const label = this.period === "month" ? "this month" : this.period === "year" ? "this year" : "all time";
+    const caption = seg.createSpan({ cls: "tj-strat-period-count", text: `${n} ${n === 1 ? "trade" : "trades"}` });
+    caption.setAttr("title", `Filed trades inside the window (${label}). Missed setups are shown separately.`);
   }
 
   private async renderOverview(main: HTMLElement): Promise<void> {
@@ -310,9 +316,9 @@ export class SetupsView extends ItemView {
       cls: "tj-view-intro",
       text: "Name the strategies you trade so every trade can be filed under one. Open a card for the strategy's own numbers, rules and recent trades.",
     });
-    this.renderPeriodControl(main);
 
     const stats = await this.collectStats();
+    this.renderPeriodControl(main, stats);
 
     const registered = this.plugin.settings.strategies ?? [];
     const registeredKeys = new Set(registered.map((s) => s.name.trim().toLowerCase()));
@@ -509,7 +515,7 @@ export class SetupsView extends ItemView {
       this.rulesEditing = false;
       void this.render();
     });
-    this.renderPeriodControl(nav);
+    this.renderPeriodControl(nav, stats);
 
     const titleRow = main.createDiv({ cls: "tj-strat-detail-head" });
     const titleBlock = titleRow.createDiv({ cls: "tj-strat-detail-title" });
