@@ -161,6 +161,13 @@ function multiLineChart(
   const span = max - min || 1;
   const y = (v: number): number => pad + (h - 2 * pad) * (1 - (v - min) / span);
   const svgNS = "http://www.w3.org/2000/svg";
+  // Gradient stops cannot read CSS variables (an SVG attribute with var()
+  // resolves to nothing and paints black), so the tones are resolved to their
+  // real values here, once per chart.
+  const bodyStyle = getComputedStyle(document.body);
+  const toneGood = bodyStyle.getPropertyValue("--tj-tone-good").trim() || "#34d17a";
+  const toneBad = bodyStyle.getPropertyValue("--tj-tone-bad").trim() || "#ff5d48";
+  const toneMuted = bodyStyle.getPropertyValue("--text-muted").trim() || "#9aa0a6";
   const svg = document.createElementNS(svgNS, "svg");
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
   svg.setAttribute("preserveAspectRatio", "none");
@@ -197,7 +204,7 @@ function multiLineChart(
     // The line wears the result it ends with: green over zero, red under it —
     // the same tones every other number in the journal speaks in.
     const final = cum[cum.length - 1];
-    const color = final > 0 ? "var(--tj-tone-good)" : final < 0 ? "var(--tj-tone-bad)" : "var(--text-muted)";
+    const color = final > 0 ? toneGood : final < 0 ? toneBad : toneMuted;
     const x = (j: number): number => pad + (j * (w - 2 * pad)) / (cum.length - 1);
     const lineD = monotonePath(cum.map((_, j) => x(j)), cum.map((v) => y(v)));
     // The area under the line, fading from the line's colour downward.
