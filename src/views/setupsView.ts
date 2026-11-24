@@ -57,15 +57,18 @@ function streakLabel(series: Trade[]): string {
 /** Chart drawing state — ids of gradients must be unique per document. */
 let chartSeq = 0;
 
-/** Friendly round numbers for the y axis: 1/2/5 steps of a decade. */
-function niceTicks(min: number, max: number, count = 5): number[] {
+/** Friendly round numbers for the y axis: enough labels to read the scale
+ *  (0, 100, 200… in dollars; 0.00, 1.00, 2.00… in R), stopping where the
+ *  lines stop — never drawing ticks beyond the range the chart holds. */
+function niceTicks(min: number, max: number, count = 6): number[] {
   if (!(max > min)) return [min];
   const raw = (max - min) / (count - 1);
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const norm = raw / mag;
-  const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+  const step = (norm >= 5 ? 5 : norm >= 2.5 ? 2.5 : norm >= 2 ? 2 : norm >= 1 ? 1 : 0.5) * mag;
   const out: number[] = [];
-  for (let v = Math.floor(min / step) * step; v <= max + step * 0.001; v += step) {
+  const start = Math.ceil(min / step - 1e-9) * step;
+  for (let v = start; v <= max + step * 1e-9; v += step) {
     out.push(Number(v.toFixed(10)));
   }
   return out;
