@@ -1152,9 +1152,18 @@ class ImportCsvModal extends Modal {
     const costLine = body.createDiv({ cls: "tj-import-costs" + (orphanCount > 0 ? " is-warn" : "") });
     setIcon(costLine.createSpan({ cls: "tj-import-costs-ico" }), "receipt");
     if (!costs) {
-      costLine.createSpan({
-        text: "Costs are not recorded: the export carries commission but not the exchange, clearing and NFA lines, and half a cost would be a wrong number.",
-      });
+      // A report that carries its own costs per trade (RoboForex) needs no
+      // cash file — say that, instead of implying the money was dropped.
+      const carried = this.importable.reduce((s, t) => s + (t.commission || 0) + (t.fees || 0), 0);
+      if (Math.abs(carried) > 0.005) {
+        costLine.createSpan({
+          text: `The report carries its own costs: ${fmtMoney2(-carried)} in commission and swap travels with the trades.`,
+        });
+      } else {
+        costLine.createSpan({
+          text: "Costs are not recorded: the export carries commission but not the exchange, clearing and NFA lines, and half a cost would be a wrong number.",
+        });
+      }
     } else {
       const inAccount = this.round2(Math.max(0, costs.charged - costs.recorded));
       costLine.createSpan({
