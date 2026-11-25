@@ -9600,6 +9600,14 @@ body.theme-light .tj-settings .tj-set-logo { filter: invert(1); }
   border-radius: 0;
   overflow: visible;
 }
+/* The custom range sits on its own line, below the buttons and beside nothing —
+   the search box keeps the space it had. */
+.tj-tl-customrow {
+  width: 100%;
+  gap: 8px;
+  align-items: center;
+  margin: 2px 0 4px;
+}
 .tj-tl-periodbar .tj-pbtn {
   padding: 4px 10px;
   border: none;

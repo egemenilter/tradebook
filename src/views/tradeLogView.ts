@@ -1747,7 +1747,9 @@ export class TradeLogView extends ItemView {
       });
     }
     if (this.period === "custom") {
-      const box = bar.createDiv({ cls: "tj-period-custom" });
+      // The range lives on its own line under the buttons: inline it would sit
+      // beside the search box and push or cover it on a narrow ledger.
+      const box = root.createDiv({ cls: "tj-period-custom tj-tl-customrow" });
       mountDateField(box, {
         value: this.customFrom,
         format: this.plugin.settings.dateFormat,
