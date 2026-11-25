@@ -52,6 +52,8 @@ export const FIRM_CATALOG: FirmLogoEntry[] = [
   { id: "ninjatrader", label: "NinjaTrader", group: "broker" },
   { id: "interactivebrokers", label: "Interactive Brokers", group: "broker" },
   { id: "ampfutures", label: "AMP Futures", group: "broker" },
+  { id: "roboforex", label: "RoboForex", group: "broker" },
+  { id: "pepperstone", label: "Pepperstone", group: "broker" },
   { id: "own", label: "Practice", group: "practice" },
 ];
 
