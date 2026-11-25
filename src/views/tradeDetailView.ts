@@ -5,7 +5,8 @@ import { renderAppShell } from "../ui";
 import { fmtMoney, fmtMoney2, fmtMoneyAbs, fmtPrice } from "../tz";
 import { formatDate } from "../lib/dates";
 import { legBaseKey } from "../lib/copy";
-import { setTradeMistakeTags, setTradeFields, updateTradeArrayFields, updateTradeFields, updateTradeScreenshots, setTradeStrategy } from "../storage";
+import { setTradeMistakeTags, setTradeFields, updateTradeArrayFields, updateTradeFields, updateManualTradeExecutions, updateTradeScreenshots, setTradeStrategy } from "../storage";
+import { isManualClock, type ManualExitFillInput } from "../lib/manualTradeFills";
 import { normalizeTags, reviewOptions, reviewTagGroups } from "../lib/tags";
 
 /**
@@ -80,6 +81,8 @@ export class TradeDetailView extends ItemView {
   private _saveTimers: Record<string, { timer: number; run: () => Promise<void> }> = {};
   /** Last local write; the global vault invalidation should not redraw this view immediately. */
   private _lastLocalWriteAt = 0;
+  /** Whether the Executions panel currently shows the inline correction form. */
+  private execEditing = false;
   private _refreshRetry: number | null = null;
   /** Screenshot on show in the carousel — reset whenever the trade changes. */
   private _activePrint = 0;
@@ -1834,6 +1837,21 @@ export class TradeDetailView extends ItemView {
         ? `${set.entries.length} in · ${set.exits.length} out`
         : "single fill",
     });
+    // The executions of an original manual trade can be corrected in place —
+    // the journal re-pins the instants, re-splits the fills and re-prices the
+    // gross from the corrected numbers. A copied or imported trade's fills are
+    // the broker's facts; they read here, they are not rewritten.
+    const canEdit = t.origin === "manual" && !t.isCopiedTrade && set.entries.length === 1;
+    if (canEdit) {
+      head.createEl("button", {
+        cls: "tj-btn tj-mini tj-td-execs-edit",
+        text: this.execEditing ? "Close editor" : "Edit executions",
+        attr: { type: "button" },
+      }).addEventListener("click", () => {
+        this.execEditing = !this.execEditing;
+        void this.render();
+      });
+    }
 
     const fillCosts = set.fills.reduce((s, f) => s + (f.fees || 0), 0);
 
@@ -1912,6 +1930,119 @@ export class TradeDetailView extends ItemView {
       note.setText("Single fill from entry to exit. Add fills to your trade note for a detailed breakdown.");
     }
     if (set.openQty > 0) attachTip(note, { title: `${set.openQty} contracts still open`, sub: "The open part counts nowhere until it is closed." });
+    if (this.execEditing && canEdit) this.renderExecutionEditor(box, t, set);
+  }
+
+  /** The inline form that corrects a manual trade's executions: entry time,
+   *  price and size, then every exit. Saving re-pins the instants and re-prices
+   *  the gross through the same builder the add form saves through. */
+  private renderExecutionEditor(host: HTMLElement, t: Trade, set: FillSet): void {
+    const form = host.createDiv({ cls: "tj-td-execedit" });
+    const mkInput = (value: number | string, kind: "time" | "price" | "qty", disabled = false): HTMLInputElement => {
+      const input = form.createEl("input", {
+        cls: "tj-add-input tj-td-execedit-in",
+        type: "text",
+        attr: {
+          spellcheck: "false",
+          autocomplete: "off",
+          inputmode: kind === "time" ? "numeric" : "decimal",
+          placeholder: kind === "time" ? "Hh:mm:ss" : kind === "price" ? "Price" : "Qty",
+        },
+      });
+      input.value = String(value ?? "");
+      if (disabled) input.setAttr("disabled", "true");
+      return input;
+    };
+    const labelRow = form.createDiv({ cls: "tj-td-execedit-row is-head" });
+    labelRow.createSpan({ cls: "tj-td-execedit-label" });
+    for (const c of ["Time", "Price", "Qty"]) labelRow.createSpan({ cls: "tj-td-execedit-col", text: c });
+
+    const entryTime = mkInput(t.entryTime || "", "time");
+    const entryPrice = mkInput(t.entryPrice, "price");
+    const entryQty = mkInput(t.quantity, "qty");
+    const entryRow = form.createDiv({ cls: "tj-td-execedit-row is-entry" });
+    entryRow.createSpan({ cls: "tj-td-execedit-label", text: "Entry" });
+    entryRow.append(entryTime, entryPrice, entryQty);
+
+    const exitRows = set.exits.map((f) => {
+      const row = form.createDiv({ cls: "tj-td-execedit-row is-exit" });
+      row.createSpan({ cls: "tj-td-execedit-label", text: `Exit ${set.exits.length > 1 ? set.exits.indexOf(f) + 1 : ""}`.trim() });
+      const time = mkInput(f.time || "", "time");
+      const price = mkInput(f.price, "price");
+      const qty = mkInput(f.qty, "qty", set.exits.length === 1);
+      row.append(time, price, qty);
+      return { time, price, qty };
+    });
+
+    const actions = form.createDiv({ cls: "tj-td-execedit-actions" });
+    const save = actions.createEl("button", { cls: "tj-btn tj-mini", text: "Save executions", attr: { type: "button" } });
+    actions.createEl("button", { cls: "tj-btn tj-mini", text: "Cancel", attr: { type: "button" } }).addEventListener("click", () => {
+      this.execEditing = false;
+      void this.render();
+    });
+    save.addEventListener("click", () => {
+      const num = (input: HTMLInputElement): number => parseFloat(input.value.replace(",", "."));
+      const entryTimeValue = entryTime.value.trim();
+      const entryPriceValue = num(entryPrice);
+      const entryQtyValue = num(entryQty);
+      if (!isManualClock(entryTimeValue)) {
+        new Notice("The entry time must read Hh:mm:ss.");
+        return;
+      }
+      if (!(entryPriceValue > 0) || !(entryQtyValue >= 0.01)) {
+        new Notice("The entry needs a price and a quantity above zero.");
+        return;
+      }
+      const exits: ManualExitFillInput[] = [];
+      for (const [index, row] of exitRows.entries()) {
+        const time = row.time.value.trim();
+        const price = num(row.price);
+        const qty = set.exits.length === 1 ? entryQtyValue : num(row.qty);
+        if (!isManualClock(time)) {
+          new Notice(`Exit ${index + 1}'s time must read Hh:mm:ss.`);
+          return;
+        }
+        if (!(price > 0) || !(qty >= 0.01)) {
+          new Notice(`Exit ${index + 1} needs a price and a quantity above zero.`);
+          return;
+        }
+        exits.push({ quantity: qty, price, time });
+      }
+      if (set.exits.length > 1) {
+        const exitQty = exits.reduce((sum, e) => sum + e.quantity, 0);
+        if (Math.round(exitQty * 100) !== Math.round(entryQtyValue * 100)) {
+          new Notice(`Exit quantities total ${exitQty}; they must equal the entry quantity of ${entryQtyValue}.`);
+          return;
+        }
+      }
+      if (!t.id) return;
+      const file = this.app.vault.getAbstractFileByPath(t.id);
+      if (!(file instanceof TFile)) {
+        new Notice("Could not save — check the file still exists.");
+        return;
+      }
+      save.setAttr("disabled", "true");
+      save.setText("Saving…");
+      void (async () => {
+        try {
+          const saved = await updateManualTradeExecutions(this.app, file, t, {
+            quantity: entryQtyValue,
+            entryPrice: entryPriceValue,
+            entryTime: entryTimeValue,
+          }, exits);
+          this.execEditing = false;
+          this.trade = saved;
+          this.plugin.clearTradeCache();
+          this._lastLocalWriteAt = Date.now();
+          await this.render();
+        } catch (err) {
+          console.error("[tradebook] execution correction failed:", err);
+          new Notice(err instanceof Error ? err.message : "The correction was not saved.");
+          save.removeAttribute("disabled");
+          save.setText("Save executions");
+        }
+      })();
+    });
   }
 
   // ---- Debounced review save ----

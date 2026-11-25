@@ -6,6 +6,7 @@ import { fmtPrice } from "./tz";
 import { parsePlannedNumber, type PlannedNumberField } from "./lib/review";
 import { buildManualExitFills, type ManualExitFillInput } from "./lib/manualTradeFills";
 import { pinManualInstants } from "./lib/instant";
+import { knownFuturesSpec } from "./futures";
 import { strategiesOf } from "./lib/strategySelection";
 
 /**
@@ -629,6 +630,10 @@ export async function updateManualTradeExecutions(
     const result = buildManualExitFills(candidate, pinned, true);
     if (!result.ok) throw new Error(result.error);
     const updated = result.trade;
+    // A trade the journal cannot price (quoted outside USD) carries a P&L the
+    // trader recorded by hand; the recompute has none to offer, so the recorded
+    // one survives the correction unchanged.
+    if (!knownFuturesSpec(updated.symbol) && Number.isFinite(latest.pnl)) updated.pnl = latest.pnl;
     const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
     if (!match) throw new Error("Trade frontmatter is missing.");
     const fields = ["quantity", "entry_price", "exit_price", "entry_time", "exit_time", "entry_instant", "exit_instant", "pnl", "pnl_points"];

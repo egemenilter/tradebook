@@ -9820,6 +9820,52 @@ body.theme-light .tj-settings .tj-set-logo { filter: invert(1); }
   gap: 10px;
   margin-bottom: 8px;
 }
+.tj-td-execs-edit {
+  margin-left: auto;
+}
+
+/* The inline execution editor: one row per fill, the three values a correction
+   can touch — time, price, quantity. */
+.tj-td-execedit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--tj-line, var(--background-modifier-border));
+  border-radius: 8px;
+}
+
+.tj-td-execedit-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.tj-td-execedit-row.is-head .tj-td-execedit-col {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tj-fg-3, var(--text-muted));
+}
+
+.tj-td-execedit-label {
+  font-size: var(--tj-fs-small, 12px);
+  color: var(--tj-fg-3, var(--text-muted));
+}
+
+.tj-td-execedit-row.is-entry .tj-td-execedit-label,
+.tj-td-execedit-row.is-entry .tj-td-execedit-in {
+  font-weight: 600;
+}
+
+.tj-td-execedit-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
 .tj-td-execs-count {
   font-size: var(--tj-fs-label);
   letter-spacing: 0.08em;
