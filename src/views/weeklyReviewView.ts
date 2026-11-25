@@ -188,15 +188,19 @@ export class WeeklyReviewView extends ItemView {
       void this.render();
     });
 
-    // ---- 3. Screenshots — forecast against review, side by side ----
+    // ---- 3. Screenshots — Before (forecast) against After (review) ----
     const meta = await this.plugin.readWeeklyMeta(this.weekKey);
     const shotsCard = stack.createDiv({ cls: "tj-strat-card" });
     shotsCard.createDiv({ cls: "tj-strat-card-title", text: "Screenshots" });
     const shotsGrid = shotsCard.createDiv({ cls: "tj-weekly-shots" });
-    for (const [kind, label] of [["forecast", "Forecast"], ["review", "Review"]] as const) {
+    for (const [kind, label, hint] of [
+      ["forecast", "Before", "Sunday's chart lands here."],
+      ["review", "After", "Friday's charts land here."],
+    ] as const) {
       const col = shotsGrid.createDiv({ cls: "tj-weekly-shotcol" });
       const colHead = col.createDiv({ cls: "tj-strat-notes-label" });
-      colHead.createSpan({ text: `${label} (${kind === "forecast" ? meta.forecast.length : meta.review.length})` });
+      const prints = kind === "forecast" ? meta.forecast : meta.review;
+      colHead.createSpan({ text: `${label}${prints.length ? ` (${prints.length})` : ""}` });
       const plus = colHead.createEl("button", { cls: "tj-strat-notes-plus", text: "+", attr: { type: "button", title: `Add a ${kind} screenshot` } });
       const fileInput = plus.createEl("input", { type: "file", attr: { accept: "image/png,image/jpeg,image/webp" } });
       fileInput.style.display = "none";
@@ -211,15 +215,14 @@ export class WeeklyReviewView extends ItemView {
           await this.render();
         })();
       });
-      const prints = kind === "forecast" ? meta.forecast : meta.review;
-      const thumbs = col.createDiv({ cls: "tj-strat-prints" });
+      const thumbs = col.createDiv({ cls: "tj-weekly-prints" });
       if (!prints.length) {
-        thumbs.createDiv({ cls: "tj-weekly-hint", text: kind === "forecast" ? "Sunday's chart lands here." : "Friday's chart lands here." });
+        thumbs.createDiv({ cls: "tj-weekly-hint", text: hint });
       }
       for (const path of prints) {
         const pf = this.plugin.app.vault.getAbstractFileByPath(path);
         if (!(pf instanceof TFile)) continue;
-        const cell = thumbs.createDiv({ cls: "tj-strat-print" });
+        const cell = thumbs.createDiv({ cls: "tj-weekly-print" });
         const img = cell.createEl("img", { attr: { src: this.plugin.app.vault.getResourcePath(pf), alt: path } });
         img.style.cursor = "zoom-in";
         img.addEventListener("click", () => this.openPrintOverlay(this.plugin.app.vault.getResourcePath(pf)));

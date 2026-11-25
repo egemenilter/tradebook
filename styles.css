@@ -14999,3 +14999,25 @@ justify-content: space-between;
     grid-template-columns: 1fr;
   }
 }
+
+/* Before/After screenshots: full-width prints at natural height, stacked —
+   the forecast's one big chart left, the review's charts right. */
+.tj-weekly-prints {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tj-weekly-print {
+  position: relative;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--background-primary, #161616);
+}
+
+.tj-weekly-print img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
