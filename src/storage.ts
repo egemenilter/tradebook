@@ -148,6 +148,9 @@ export function tradeToMarkdown(t: Trade): string {
     t.recordedOrderFacts?.length ? `recorded_order_facts: ${quoteYaml(JSON.stringify(t.recordedOrderFacts))}` : null,
     num("pnl", t.pnl),
     num("pnl_points", t.pnlPoints),
+    // Risk recorded by hand (a pair the journal cannot price): kept so R can
+    // read it back; absent on every trade whose risk follows from the stop.
+    t.riskDollars ? num("risk_dollars", t.riskDollars) : null,
     // The platform's bill lives at the trade level as well as inside each fill:
     // without it a reload loses every cost the cash history brought, and the
     // fees card reads $0.00 on a trade that was charged. Zero is omitted so a
@@ -498,6 +501,7 @@ export function parseTradeFromMarkdown(content: string): Partial<Trade> {
     recordedOrderFacts: has("recorded_order_facts") ? parseRecordedOrderFacts(get("recorded_order_facts")) : undefined,
     pnl: parseFloat(get("pnl")),
     pnlPoints: parseFloat(get("pnl_points")),
+    riskDollars: parseFloat(get("risk_dollars")) || undefined,
     commission: parseFloat(get("commission")) || 0,
     fees: parseFloat(get("fees")) || 0,
     // Missing legacy fields are not evidence of a confirmed zero charge. This

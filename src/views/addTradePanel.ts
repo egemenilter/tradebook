@@ -395,6 +395,9 @@ export class AddTradePanel {
         delete t.stopSource;
       }
       deriveStopFromRisk?.(knownFuturesSpec(t.symbol)?.pointValue ?? null);
+      // Risk dollars recorded for an unpriced pair mean nothing once a priced
+      // contract is named — they would sit beside a stop that prices itself.
+      if (knownFuturesSpec(t.symbol)) delete t.riskDollars;
       this.renderBody();
     });
 
@@ -822,7 +825,7 @@ export class AddTradePanel {
     // what the trade page later has to say out loud.
     attachTip(fRisk.querySelector(".tj-add-f-lbl") as HTMLElement, {
       title: "Risk",
-      sub: "Type it and the stop moves to match. A stop written this way is marked assumed, not recorded \u2014 the journal says so wherever it shows.",
+      sub: "Type it and the stop moves to match. A stop written this way is marked assumed, not recorded \u2014 the journal says so wherever it shows. On a pair quoted outside USD there is no stop to derive: the dollars are recorded as the risk itself, and R reads them.",
     });
     const riskInput = freeNumeric(
       fRisk.createEl("input", {
@@ -835,6 +838,9 @@ export class AddTradePanel {
     // rule: it seeds the field and, once an entry price exists, derives the stop.
     const defaultRisk = this.plugin.settings.defaultRisk ?? 0;
     if (!t.stopLoss && defaultRisk > 0) riskInput.value = String(defaultRisk);
+    // A recorded risk on an unpriced pair survives the re-renders a symbol
+    // change triggers — the field comes back holding it.
+    else if (!t.stopLoss && Number.isFinite(t.riskDollars)) riskInput.value = String(t.riskDollars);
     // While the field is being typed in, paintExtra must not overwrite it with
     // the value derived from the stop — that would fight the caret.
     let editingRisk = false;
@@ -873,6 +879,11 @@ export class AddTradePanel {
           t.stopSource = "assumed";
           stopInput.value = String(rounded);
         }
+      } else if (pointValue === null) {
+        // No priced contract, no stop to derive: the risk the trader types is
+        // the record itself, and R reads it against the recorded P&L.
+        if (Number.isFinite(risk) && risk > 0) t.riskDollars = risk;
+        else delete t.riskDollars;
       }
       paint();
     });

@@ -44,6 +44,19 @@ export function recordedRisk(trade: Trade): number | null {
 }
 
 /**
+ * The money a trade risked, however it is known: derived from entry and stop
+ * when the journal prices the contract, else the dollars the trader recorded
+ * by hand for a pair it cannot price. Null when neither exists — R stays
+ * missing rather than resting on an invented denominator.
+ */
+export function recordedRiskMoney(trade: Trade): number | null {
+  const derived = recordedRisk(trade);
+  if (derived !== null && derived > 0) return derived;
+  const typed = Number(trade.riskDollars);
+  return Number.isFinite(typed) && typed > 0 ? typed : null;
+}
+
+/**
  * The stop this rule implies for a trade, or null when it implies nothing.
  *
  * Refuses in three cases, and each refusal is a real one:

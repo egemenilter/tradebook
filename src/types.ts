@@ -172,6 +172,10 @@ export interface Trade {
   /** Panel draft only: the P&L the trader typed for a pair the journal cannot
    *  price (quoted outside a dollar). Never written to a note; cleared on save. */
   recordedPnl?: number;
+  /** The money at risk, recorded by hand, for a trade whose risk the journal
+   *  cannot derive from prices (a pair quoted outside USD). Persisted as
+   *  `risk_dollars`; R reads it when the priced path has nothing to measure. */
+  riskDollars?: number;
   /** Order type at entry (Limit, Market, Stop, etc.). Informational — for discipline review. */
   orderType?: string;
   /** Broker fill ID — used for import dedup, not shown in the UI. */

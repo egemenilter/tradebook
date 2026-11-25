@@ -12,7 +12,7 @@ import { fmtMoney, fmtMoneyAbs, fmtPrice } from "../tz";
 import { formatDate } from "./dates";
 import { attachTip } from "./tip";
 import { futuresSpec } from "../futures";
-import { recordedRisk } from "./risk";
+import { recordedRiskMoney } from "./risk";
 import { fillIndex, fillLabel, fillSet, FillSet, isBreakEven, toneClass } from "./fills";
 import { legBaseKey } from "./copy";
 import { netPnl } from "./fees";
@@ -104,12 +104,13 @@ export function holdFmtOf(t: Trade): string {
 
 /**
  * The R multiple of a trade: profit over the risk actually taken
- * (entry to stop, in money). Null when there is no stop to measure against —
+ * (entry to stop, in money — or the risk dollars recorded by hand for a pair
+ * the journal cannot price). Null when there is no stop to measure against —
  * a missing value must read as missing, never as zero.
  */
 export function tradeR(t: Trade): number | null {
   if (!Number.isFinite(t.pnl)) return null;
-  const risk = recordedRisk(t);
+  const risk = recordedRiskMoney(t);
   return risk ? t.pnl / risk : null;
 }
 

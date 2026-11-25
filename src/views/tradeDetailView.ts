@@ -40,7 +40,7 @@ import { fillIndex, fillLabel, fillSet, FillSet, isBreakEven, toneClass, tradePo
 import { knownFuturesSpec } from "../futures";
 import { sessionOf } from "../lib/sessions";
 import { holdFmtOf, isMissed } from "../lib/tradeTable";
-import { recordedRisk } from "../lib/risk";
+import { recordedRiskMoney } from "../lib/risk";
 import { mountDropdown, mountMultiDropdown, DropdownItem, MultiDropdown } from "../lib/dropdown";
 import { freeNumeric } from "../lib/numeric";
 import { strategiesOf } from "../lib/strategySelection";
@@ -719,9 +719,10 @@ export class TradeDetailView extends ItemView {
       return r;
     };
 
-    // The dollars at risk are derived, never stored: a stop and an entry are
-    // all the note needs, and the risk follows from the symbol's point value.
-    const riskDollar = recordedRisk(t);
+    // The dollars at risk are derived, never stored — unless the trade is one
+    // the journal cannot price (quoted outside USD), where the trader's own
+    // recorded risk dollars are the only honest denominator.
+    const riskDollar = recordedRiskMoney(t);
 
     // ---- Entry → Exit (derived from authoritative executions) ----
     const eeRow = execFacts.createDiv({ cls: "tj-td-flip-row tj-td-exec-wide" });
@@ -765,7 +766,16 @@ export class TradeDetailView extends ItemView {
       const spec = knownFuturesSpec(t.symbol || "");
       const quantity = Number(t.quantity);
       const entry = Number(t.entryPrice);
-      if (!spec || !Number.isFinite(dollars) || dollars <= 0 || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(entry) || entry <= 0) return;
+      if (!Number.isFinite(dollars) || dollars <= 0) return;
+      if (!spec) {
+        // A pair the journal cannot price: there is no stop to derive, so the
+        // risk is stored as the money it is — R reads it back from there.
+        t.riskDollars = dollars;
+        await this.saveFields({ risk_dollars: String(dollars) });
+        this.render();
+        return;
+      }
+      if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(entry) || entry <= 0) return;
       const points = dollars / (spec.pointValue * quantity);
       const stop = t.direction === "short" ? entry + points : entry - points;
       if (!Number.isFinite(stop) || stop <= 0) return;

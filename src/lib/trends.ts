@@ -1,6 +1,7 @@
 import type { Trade } from "../types";
 import { entryInstantDate, exitInstantDate, holdMinutesOf, chronological, byEntryInstant } from "./instant";
 import { knownFuturesSpec } from "../futures";
+import { recordedRiskMoney } from "./risk";
 import { logicalDecisionKey } from "./copy";
 import { isEligibleFinancialLeg, summarizeFinancials } from "./money";
 import { DEFAULT_REENTRY_WINDOW_MINUTES, netOutcomes } from "./process";
@@ -122,15 +123,11 @@ const exitAbs = (t: Trade): number | null => {
 const holdMinutes = (t: Trade): number | null => holdMinutesOf(t);
 
 const rMultiple = (t: Trade): number | null => {
-  const stop = Number(t.stopLoss);
-  const entry = Number(t.entryPrice);
-  const qty = Number(t.quantity);
-  const spec = knownFuturesSpec(t.symbol);
-  if (!spec || !Number.isFinite(stop) || !Number.isFinite(entry) || entry <= 0 || stop <= 0 || !Number.isFinite(qty) || qty <= 0) return null;
-  if (t.direction === "long" ? stop >= entry : t.direction === "short" ? stop <= entry : true) return null;
-  const risk = Math.abs(entry - stop) * spec.pointValue * qty;
-  if (!(risk > 0)) return null;
-  return t.pnl / risk;
+  if (!Number.isFinite(t.pnl)) return null;
+  // Same denominator the ledger's R uses: the priced stop's risk, or the risk
+  // dollars recorded by hand for a pair the journal cannot price.
+  const risk = recordedRiskMoney(t);
+  return risk && risk > 0 ? t.pnl / risk : null;
 };
 
 const mean = (xs: number[]): number | null => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
