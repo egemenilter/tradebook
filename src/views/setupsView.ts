@@ -142,10 +142,18 @@ function multiLineChart(
     return out;
   });
   const flat = cums.flat();
-  const min = Math.min(0, ...flat);
-  const max = Math.max(0, ...flat);
-  const span = max - min || 1;
-  const y = (v: number): number => pad + (h - 2 * pad) * (1 - (v - min) / span);
+  // The scale carries headroom: the spline's round shoulders swing a little
+  // past the data, and the top (and bottom, when the curve dips under zero)
+  // of the chart must hold that swing instead of cutting the peak flat.
+  const dataMax = Math.max(0, ...flat);
+  const dataMin = Math.min(0, ...flat);
+  const head = (dataMax - dataMin || 1) * 0.08;
+  const scaleHi = dataMax + head;
+  const scaleLo = dataMin < 0 ? dataMin - head : dataMin;
+  const span = scaleHi - scaleLo || 1;
+  const y = (v: number): number => pad + (h - 2 * pad) * (1 - (v - scaleLo) / span);
+  // One tick list drives both the gridlines and the axis labels.
+  const ticks = niceTicks(scaleLo, scaleHi, 5);
   const svgNS = "http://www.w3.org/2000/svg";
   // Gradient stops cannot read CSS variables (an SVG attribute with var()
   // resolves to nothing and paints black), so the tones are resolved to their
@@ -163,7 +171,7 @@ function multiLineChart(
   const defs = document.createElementNS(svgNS, "defs");
   svg.appendChild(defs);
   // Gridlines at friendly round numbers; the zero line dashed over them.
-  for (const v of niceTicks(min, max, 5)) {
+  for (const v of ticks) {
     if (v === 0) continue;
     const gl = document.createElementNS(svgNS, "line");
     gl.setAttribute("x1", String(pad));
@@ -288,7 +296,7 @@ function multiLineChart(
   const wrap = el.createDiv({ cls: "tj-chart-wrap" });
   wrap.appendChild(svg);
   const cssH = 200;
-  for (const v of niceTicks(min, max, 5)) {
+  for (const v of ticks) {
     const l = wrap.createDiv({ cls: "tj-chart-ylabel", text: axisFmt(v) });
     l.style.top = `${((y(v) / h) * cssH).toFixed(0)}px`;
   }
