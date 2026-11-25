@@ -1,5 +1,6 @@
 import { App, Notice, Plugin, PluginManifest, type TAbstractFile, TFile, addIcon, normalizePath, type WorkspaceLeaf } from "obsidian";
 import { AccountRule, DEFAULT_ACCOUNT_RULES, classifyAccount, knownFuturesSpec } from "./futures";
+import { weekBounds, previousWeek, weekDays } from "./lib/weeks";
 import { PropAccount, Trade, Payout, Deposit, FeeAdjustment, AccountType, StrategyRecord } from "./types";
 import { saveTrade, parseTradeFromMarkdown, deleteTradeFile, tradeFilename, tradeMonthPath, setTradeAccount, setTradeFields, updateTradeFields, renameTradeStrategy, updateTradeArrayFields, updateTradeScreenshots } from "./storage";
 import { printFamilySlot, referencesPrintFile, remapPrintReference, remapTradePrintFields } from "./lib/renamePrintReferences";
@@ -29,6 +30,7 @@ import {
 import { generatedSiblings, mergeGeneratedIntoActual } from "./lib/copySupersession";
 import { CopierMatchProposal, linkFollower, proposeMatchesForAccount, sameDecision } from "./lib/copyReconcile";
 import { analyticsTrades, AnalyticsScope } from "./lib/scope";
+import { tradeR } from "./lib/tradeTable";
 import { accountBoundary, isTrackedTrade as isTrackedTradeOn, openingCapital, trackingStartOf } from "./lib/tracking";
 import {
   BackupNote,
@@ -958,6 +960,89 @@ export default class TradebookPlugin extends Plugin {
 
   getTradesFolder(): string {
     return normalizePath(this.settings.tradesFolder || "Tradebook");
+  }
+
+  /** `<root>/reviews/<week>.md` — one weekly review note per ISO week. */
+  weeklyReviewPath(weekKey: string): string {
+    return normalizePath(`${this.getTradesFolder()}/reviews/${weekKey}.md`);
+  }
+
+  /**
+   * The weekly review note, created when missing. The snapshot is written
+   * once, from the trades that closed inside the week — the note is the
+   * trader's to finish; the plugin only fills what the record already knows.
+   */
+  async ensureWeeklyReview(weekKey: string): Promise<TFile | null> {
+    const path = this.weeklyReviewPath(weekKey);
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) return existing;
+    await this.ensureVaultFolder(normalizePath(`${this.getTradesFolder()}/reviews`));
+    const bounds = /^(\d{4})-W(\d{2})$/.exec(weekKey);
+    if (!bounds) return null;
+    const thursday = new Date(Number(bounds[1]), 0, 1 + (Number(bounds[2]) - 1) * 7 + 3);
+    const week = weekBounds(thursday);
+    const trades = (await this.loadTrades()).filter((t) => t.date >= week.start && t.date <= week.end && Number.isFinite(t.pnl));
+    const tradesSorted = [...trades].sort((a, b) => `${a.date} ${a.entryTime}`.localeCompare(`${b.date} ${b.entryTime}`));
+    let cum = 0;
+    let peak = 0;
+    let maxDD = 0;
+    for (const t of tradesSorted) {
+      cum += netPnl(t);
+      peak = Math.max(peak, cum);
+      maxDD = Math.max(maxDD, peak - cum);
+    }
+    const net = trades.reduce((s, t) => s + netPnl(t), 0);
+    const wins = trades.filter((t) => netPnl(t) > 0).length;
+    const grossWin = trades.reduce((s, t) => s + (netPnl(t) > 0 ? netPnl(t) : 0), 0);
+    const grossLoss = trades.reduce((s, t) => s + (netPnl(t) < 0 ? -netPnl(t) : 0), 0);
+    const rRows = trades.map((t) => tradeR(t)).filter((r): r is number => r !== null);
+    const byDay = new Map<string, number>();
+    for (const t of trades) byDay.set(t.date, (byDay.get(t.date) ?? 0) + netPnl(t));
+    const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const bestDay = days.length ? days.reduce((a, b) => (b[1] > a[1] ? b : a)) : null;
+    const worstDay = days.length ? days.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
+    const byTrade = [...trades].sort((a, b) => netPnl(b) - netPnl(a));
+    const best = byTrade[0];
+    const worst = byTrade[byTrade.length - 1];
+    const symbols = new Map<string, { n: number; net: number }>();
+    for (const t of trades) {
+      const k = (t.symbol || "").toUpperCase() || "—";
+      const s = symbols.get(k) ?? { n: 0, net: 0 };
+      s.n += 1;
+      s.net += netPnl(t);
+      symbols.set(k, s);
+    }
+    const money = (v: number): string => `${v >= 0 ? "" : "-"}$${Math.abs(Math.round(v * 100) / 100).toLocaleString("en-US")}`;
+    const snapshot: string[] = [];
+    snapshot.push(`- Net: ${money(net)} · Trades: ${trades.length} · Win rate: ${trades.length ? Math.round((wins / trades.length) * 100) : 0}%`);
+    if (grossLoss > 0) snapshot.push(`- Profit factor: ${(grossWin / grossLoss).toFixed(2)} · Max drawdown: ${money(maxDD)}`);
+    if (rRows.length) snapshot.push(`- Avg R: ${(rRows.reduce((a, b) => a + b, 0) / rRows.length >= 0 ? "+" : "")}${(rRows.reduce((a, b) => a + b, 0) / rRows.length).toFixed(2)}R over ${rRows.length} trades with a stop`);
+    if (bestDay) snapshot.push(`- Best day: ${bestDay[0]} (${money(bestDay[1])}) · Worst day: ${worstDay?.[0] ?? "—"} (${money(worstDay?.[1] ?? 0)})`);
+    if (best) snapshot.push(`- Best trade: ${best.symbol} ${best.date} (${money(netPnl(best))}) · Worst: ${worst?.symbol ?? "—"} ${worst?.date ?? "—"} (${money(worst ? netPnl(worst) : 0)})`);
+    if (symbols.size) {
+      snapshot.push(`- By symbol: ${[...symbols.entries()].sort((a, b) => b[1].net - a[1].net).map(([k, s]) => `${k} ${s.n}×${money(s.net)}`).join(" · ")}`);
+    }
+    const body =
+      `---\ntype: weekly-review\nweek: ${weekKey}\nstart: ${week.start}\nend: ${week.end}\n---\n\n` +
+      `# ${weekKey} Review\n\n## Snapshot (auto)\n\n${snapshot.join("\n")}\n\n` +
+      `## What worked\n\n\n## What didn't\n\n\n## Most profitable setups\n\n\n## Costly mistakes\n\n\n## Next week focus\n\n- [ ] \n`;
+    try {
+      return await this.app.vault.create(path, body);
+    } catch (err) {
+      console.error("[tradebook] could not create the weekly review", err);
+      return null;
+    }
+  }
+
+  /** Create (when needed) and open the week's review note. */
+  async openWeeklyReview(weekKey?: string): Promise<void> {
+    const key = weekKey ?? weekBounds(new Date()).key;
+    const file = await this.ensureWeeklyReview(key);
+    if (!file) {
+      new Notice("Could not create the weekly review note.");
+      return;
+    }
+    await this.openVaultPath(file.path);
   }
 
   /** `<root>/<year>/attachments` — where a trade's screenshots live. */

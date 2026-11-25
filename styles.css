@@ -14751,3 +14751,55 @@ justify-content: space-between;
   letter-spacing: 0.05em;
   color: var(--text-muted, #9aa0a6);
 }
+
+/* Weekly Review widget: Mon–Sun bars, the week's totals, one sentence. */
+.tj-week-bars {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.tj-week-bars .zero {
+  stroke: var(--background-modifier-border);
+  stroke-dasharray: 3 4;
+}
+
+.tj-week-bars .slot {
+  fill: var(--background-modifier-border);
+}
+
+.tj-week-bars .slot.is-future {
+  opacity: 0.4;
+}
+
+.tj-week-bars .tj-week-day {
+  fill: var(--tj-fg-3, #8a9099);
+  font-size: 9px;
+}
+
+.tj-week-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.tj-week-net {
+  font-size: var(--tj-fs-big);
+  font-weight: var(--tj-w-bold, 700);
+  font-variant-numeric: tabular-nums;
+}
+
+.tj-week-meta {
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-3, #8a9099);
+}
+
+.tj-week-context {
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-3, #8a9099);
+  margin-bottom: 8px;
+}
+
+.tj-week-open {
+  margin-top: 4px;
+}

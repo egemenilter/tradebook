@@ -48,6 +48,7 @@ import { inNegativeState, normalizeTags, reviewOptions } from "../lib/tags";
 import { hasPrint, reviewStatus, reviewSummary, reviewRepresentativesForVisibleTrades } from "../lib/review";
 import { DEFAULT_REENTRY_WINDOW_MINUTES, netOutcomes, reentrySignals, computeProcessSignals } from "../lib/process";
 import { sessionLabel } from "../lib/sessions";
+import { weekBounds, previousWeek, weekDays, type WeekBounds } from "../lib/weeks";
 import { killTip, showTip, moveTip } from "../lib/tip";
 import { renderLineChart } from "../lib/lineChart";
 import { formatDate } from "../lib/dates";
@@ -129,6 +130,7 @@ export const CARD_TITLES: Record<string, string> = {
   shortpnl: "Short Net P&L",
   calendar: "Calendar",
   heatmap: "Trading Activity",
+  weeklyreview: "Weekly Review",
   breakdown: "Breakdown",
   missed: "Missed Setups",
   rmultiples: "R-Multiples",
@@ -176,7 +178,7 @@ const HOME_METRICS = HOME_METRIC_MENU_GROUPS.flatMap((group) => group.ids);
 const HOME_WIDGET_MENU_GROUPS: Array<{ title: string; ids: string[] }> = [
   { title: "Performance", ids: ["netpnl", "longpnl", "shortpnl", "costs", "drawdown", "size"] },
   { title: "Origin", ids: ["breakdown", "rmultiples", "trends", "missed"] },
-  { title: "Process and time", ids: ["calendar", "heatmap", "score", "focus", "tags", "tilt", "revenge"] },
+  { title: "Process and time", ids: ["calendar", "heatmap", "weeklyreview", "score", "focus", "tags", "tilt", "revenge"] },
   { title: "Accounts and cash", ids: ["accounts", "payouts"] },
 ];
 
@@ -2621,6 +2623,7 @@ export abstract class WidgetGridView extends ItemView {
             case "netpnl": this.renderEquityBody(body, trades, undefined, "analytics-net-pnl"); break;
             case "breakdown": this.renderBreakdownWidget(body, trades, header); break;
             case "missed": this.renderMissedWidget(body); break;
+            case "weeklyreview": this.renderWeeklyReviewWidget(body, trades); break;
             case "rmultiples": this.renderRMultiplesWidget(body, trades, header); break;
             case "score": this.renderScoreWidget(body, recentScore.trades, recentScore.label, header); break;
             case "heatmap": this.renderHeatmap(body, homeBase ?? trades, homeCounted ?? counted, isHome ? asOf : undefined, header); break;
@@ -4845,6 +4848,114 @@ export abstract class WidgetGridView extends ItemView {
    * by activity; the timelines (Weekday · Hour · Session) read chronologically
    * and show every bucket that has trades. The selected tab is persisted.
    */
+  /**
+   * The week at a glance: Monday–Sunday net P&L bars, the week's totals, one
+   * honest sentence against last week, and the door into the week's review
+   * note — created on first open.
+   */
+  renderWeeklyReviewWidget(body: HTMLElement, trades: Trade[]): void {
+    const today = new Date();
+    const week = weekBounds(today);
+    const prev = previousWeek(today);
+    const inRange = (w: WeekBounds): Trade[] =>
+      trades.filter((t) => t.date >= w.start && t.date <= w.end && Number.isFinite(t.pnl));
+    const inWeek = inRange(week);
+    const inPrev = inRange(prev);
+    const net = inWeek.reduce((s, t) => s + netPnl(t), 0);
+    const prevNet = inPrev.reduce((s, t) => s + netPnl(t), 0);
+    const wins = inWeek.filter((t) => netPnl(t) > 0).length;
+    const losses = inWeek.filter((t) => netPnl(t) < 0).length;
+    const dayNets = weekDays(week).map((d) => inWeek.filter((t) => t.date === d).reduce((s, t) => s + netPnl(t), 0));
+    const winDays = dayNets.filter((v) => v > 0).length;
+    const lossDays = dayNets.filter((v) => v < 0).length;
+    const todayKey = week.start <= dateInZone(this.plugin.settings.timeZone) && dateInZone(this.plugin.settings.timeZone) <= week.end
+      ? dateInZone(this.plugin.settings.timeZone)
+      : "";
+    const todayIdx = todayKey ? weekDays(week).indexOf(todayKey) : -1;
+
+    // ---- The seven day bars ----
+    const width = Math.max(body.clientWidth || 260, 180);
+    const barW = Math.floor((width - 12 - 6 * 6) / 7);
+    const height = 64;
+    const maxAbs = Math.max(...dayNets.map((v) => Math.abs(v)), 1);
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("width", String(barW * 7 + 36));
+    svg.setAttribute("height", String(height + 14));
+    svg.setAttribute("class", "tj-week-bars");
+    const bodyStyle = getComputedStyle(document.body);
+    const good = bodyStyle.getPropertyValue("--tj-tone-good").trim() || "#34d17a";
+    const bad = bodyStyle.getPropertyValue("--tj-tone-bad").trim() || "#ff5d48";
+    const mid = height / 2;
+    const zero = document.createElementNS(svgNS, "line");
+    zero.setAttribute("x1", "0");
+    zero.setAttribute("x2", String(barW * 7 + 30));
+    zero.setAttribute("y1", String(mid));
+    zero.setAttribute("y2", String(mid));
+    zero.setAttribute("class", "zero");
+    svg.appendChild(zero);
+    dayNets.forEach((v, i) => {
+      const x = i * (barW + 6);
+      const future = todayIdx >= 0 && i > todayIdx;
+      const h = Math.max(3, Math.round((Math.abs(v) / maxAbs) * (height / 2 - 4)));
+      if (future || v === 0) {
+        // Days the record is silent on — still ahead, or genuinely flat —
+        // sit as a small slot on the zero line instead of a fake bar.
+        const slot = document.createElementNS(svgNS, "rect");
+        slot.setAttribute("x", String(x));
+        slot.setAttribute("y", String(mid - 2));
+        slot.setAttribute("width", String(barW));
+        slot.setAttribute("height", "4");
+        slot.setAttribute("rx", "2");
+        slot.setAttribute("class", future ? "slot is-future" : "slot");
+        const t = document.createElementNS(svgNS, "title");
+        t.textContent = future ? "Not yet" : "Flat day";
+        slot.appendChild(t);
+        svg.appendChild(slot);
+      } else {
+        const bar = document.createElementNS(svgNS, "rect");
+        bar.setAttribute("x", String(x));
+        bar.setAttribute("y", String(v > 0 ? mid - h : mid));
+        bar.setAttribute("width", String(barW));
+        bar.setAttribute("height", String(h));
+        bar.setAttribute("rx", "3");
+        bar.setAttribute("fill", v > 0 ? good : bad);
+        const t = document.createElementNS(svgNS, "title");
+        t.textContent = `${weekDays(week)[i]} · ${fmtMoney2(v)}`;
+        bar.appendChild(t);
+        svg.appendChild(bar);
+      }
+      const day = document.createElementNS(svgNS, "text");
+      day.setAttribute("x", String(x + barW / 2));
+      day.setAttribute("y", String(height + 12));
+      day.setAttribute("text-anchor", "middle");
+      day.setAttribute("class", "tj-week-day");
+      day.textContent = ["M", "T", "W", "T", "F", "S", "S"][i];
+      svg.appendChild(day);
+    });
+    body.appendChild(svg);
+
+    // ---- Totals and the one sentence against last week ----
+    const line = body.createDiv({ cls: "tj-week-summary" });
+    const netSpan = line.createSpan({ cls: "tj-week-net " + toneClass(net) });
+    netSpan.setText(inWeek.length ? fmtMoney2(net) : "—");
+    const meta = line.createSpan({ cls: "tj-week-meta" });
+    meta.setText(inWeek.length ? `${inWeek.length} trades · ${winDays}W ${lossDays}L days` : "No trades yet this week.");
+    const context = body.createDiv({ cls: "tj-week-context" });
+    if (inWeek.length && prevNet !== 0) {
+      const delta = Math.round(((net - prevNet) / Math.abs(prevNet)) * 100);
+      const better = net >= prevNet;
+      const s = context.createSpan({ cls: better ? "tj-pos" : "tj-neg", text: `${better ? "▲" : "▼"} ${Math.abs(delta)}% vs last week (${fmtMoney2(prevNet)})` });
+      s.setAttr("title", `Last week: ${prev.start} → ${prev.end}`);
+    } else if (inWeek.length) {
+      context.createSpan({ cls: "tj-fg-3", text: "Last week had no closed trades to compare." });
+    }
+
+    // ---- The door into the review note ----
+    const btn = body.createEl("button", { cls: "tj-btn tj-mini tj-week-open", text: `Open weekly review` });
+    btn.addEventListener("click", () => void this.plugin.openWeeklyReview(week.key));
+  }
+
   /** Missed setups, newest first: visible on Home, counted in nothing. */
   renderMissedWidget(body: HTMLElement): void {
     void this.plugin.loadMissedTrades().then((missed) => {
