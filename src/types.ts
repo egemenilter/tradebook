@@ -394,6 +394,9 @@ export interface StrategyRecord {
   name: string;
   /** ISO timestamp of registration. */
   createdAt: string;
+  /** Lifecycle: active by default; testing marks a strategy under trial, and
+   *  archived parks one without deleting its history or note. */
+  status?: "active" | "testing" | "archived";
 }
 
 /** The rules an account answers to. Everything is optional: the account is the

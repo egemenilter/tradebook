@@ -1,4 +1,4 @@
-import { ItemView, Notice, setIcon, type WorkspaceLeaf } from "obsidian";
+import { ItemView, Notice, setIcon, TFile, type WorkspaceLeaf } from "obsidian";
 import type TradebookPlugin from "../main";
 import { renderAppShell } from "../ui";
 import { fmtMoney, fmtMoneyCompact, todayKey } from "../tz";
@@ -7,6 +7,7 @@ import { attachTip } from "../lib/tip";
 import { netPnl } from "../lib/fees";
 import { tradeR } from "../lib/tradeTable";
 import { mountDropdown, type DropdownItem } from "../lib/dropdown";
+import { reviewStatus } from "../lib/review";
 import type { Trade } from "../types";
 
 export const SETUPS_VIEW_TYPE = "tradebook-setups-view";
@@ -42,6 +43,12 @@ function fmtAvgR(rSum: number, rN: number): string {
 function profitFactor(s: StratStat): string {
   if (!s.grossWin || !s.grossLoss) return "—";
   return (s.grossWin / s.grossLoss).toFixed(2);
+}
+
+/** A profit factor above 1 makes money; below 1 it leaks. */
+function profitFactorClass(s: StratStat): string {
+  if (!s.grossWin || !s.grossLoss) return "";
+  return s.grossWin / s.grossLoss >= 1 ? "tj-pos" : "tj-neg";
 }
 
 /** The run the strategy is on right now: `3W streak`, `2L streak`. */
@@ -107,7 +114,7 @@ function niceTicks(min: number, max: number, count = 6): number[] {
 function multiLineChart(
   el: HTMLElement,
   entries: Array<{ series: Trade[]; value?: (t: Trade) => number | null }>,
-  opts: { value?: (t: Trade) => number | null; fmt?: (v: number) => string; axisFmt?: (v: number) => string } = {}
+  opts: { value?: (t: Trade) => number | null; fmt?: (v: number) => string; axisFmt?: (v: number) => string; cssHeight?: number } = {}
 ): void {
   const valueOf = opts.value ?? netPnl;
   const fmt = opts.fmt ?? ((v: number): string => fmtMoney(v));
@@ -295,7 +302,7 @@ function multiLineChart(
   // would stretch with the viewBox, HTML ones never do.
   const wrap = el.createDiv({ cls: "tj-chart-wrap" });
   wrap.appendChild(svg);
-  const cssH = 200;
+  const cssH = opts.cssHeight ?? 200;
   for (const v of ticks) {
     const l = wrap.createDiv({ cls: "tj-chart-ylabel", text: axisFmt(v) });
     l.style.top = `${((y(v) / h) * cssH).toFixed(0)}px`;
@@ -330,10 +337,12 @@ export class SetupsView extends ItemView {
   private focusTarget: HTMLInputElement | null = null;
   /** The stats window: every number on the page reads through it. */
   private period: "all" | "month" | "year" = "all";
-  /** The other strategy shown beside this one, when comparing. */
-  private compareWith: string | null = null;
   /** The detail chart's unit: dollars or R multiples. */
   private chartMode: "usd" | "r" = "usd";
+  /** The overview comparison: which metric, which trade side, which strategy. */
+  private overviewMetric: "pf" | "net" | "winrate" | "avgr" | "exp" = "pf";
+  private overviewSide: "all" | "wins" | "losses" = "all";
+  private overviewPick = "";
 
   constructor(leaf: WorkspaceLeaf, plugin: TradebookPlugin) {
     super(leaf);
@@ -550,34 +559,9 @@ export class SetupsView extends ItemView {
       for (const s of registered) this.renderCard(grid, s.name, stats, (el) => (this.focusTarget = el));
     }
 
-    // ---- Cumulative net, one line per strategy ----
-    const charted = registered
-      .map((s) => ({ name: s.name, series: stats.get(s.name.toLowerCase())?.series ?? [] }))
-      .filter((s) => s.series.length >= 2);
-    if (charted.length) {
-      const chartCard = main.createDiv({ cls: "tj-strat-card tj-strat-chartcard" });
-      const chartHead = chartCard.createDiv({ cls: "tj-strat-card-head" });
-      chartHead.createDiv({ cls: "tj-strat-card-title", text: "Cumulative net by strategy" });
-      const chartEl = chartCard.createDiv({ cls: "tj-strat-chartbox" });
-      multiLineChart(
-        chartEl,
-        charted.map((s) => ({ series: s.series })),
-        { axisFmt: fmtMoneyCompact }
-      );
-      const legend = chartCard.createDiv({ cls: "tj-strat-legend" });
-      charted.forEach((s) => {
-        const net = stats.get(s.name.toLowerCase())?.net ?? 0;
-        const item = legend.createSpan({ cls: "tj-strat-legend-item" });
-        const dot = item.createSpan({ cls: "tj-strat-legend-dot", attr: { "aria-hidden": "true" } });
-        dot.style.background = net > 0 ? "var(--tj-tone-good)" : net < 0 ? "var(--tj-tone-bad)" : "var(--text-muted)";
-        item.createSpan({ text: s.name });
-        item.addEventListener("click", () => {
-          this.selected = s.name;
-          this.rulesEditing = false;
-          void this.render();
-        });
-      });
-    }
+    // ---- Strategy comparison, one bar per strategy (the setups overview) ----
+    const charted = registered.filter((s) => (stats.get(s.name.toLowerCase())?.n ?? 0) > 0);
+    if (charted.length) this.renderOverviewBars(main, stats);
 
     // ---- Names the trades carry that are not registered ----
     if (untracked.length) {
@@ -588,10 +572,217 @@ export class SetupsView extends ItemView {
     }
   }
 
+  /** The overview comparison: one horizontal bar per strategy against its
+   *  metric's baseline, the way a setup list is actually scanned. */
+  private renderOverviewBars(main: HTMLElement, stats: Map<string, StratStat>): void {
+    const card = main.createDiv({ cls: "tj-strat-card tj-strat-chartcard" });
+    const head = card.createDiv({ cls: "tj-strat-card-head" });
+    head.createDiv({ cls: "tj-strat-card-title", text: "Strategy comparison" });
+    const ctl = head.createDiv({ cls: "tj-strat-overview-ctl" });
+    for (const [id, label] of [
+      ["all", "All"],
+      ["wins", "Wins"],
+      ["losses", "Losses"],
+    ] as const) {
+      ctl.createEl("button", {
+        cls: "tj-add-seg-btn" + (this.overviewSide === id ? " on" : ""),
+        text: label,
+        attr: { type: "button" },
+      }).addEventListener("click", () => {
+        if (this.overviewSide === id) return;
+        this.overviewSide = id;
+        void this.render();
+      });
+    }
+    const metrics = [
+      { id: "pf", label: "Profit factor" },
+      { id: "net", label: "Net P&L" },
+      { id: "winrate", label: "Win rate" },
+      { id: "avgr", label: "Avg R" },
+      { id: "exp", label: "Expectancy" },
+    ] as const;
+    mountDropdown(
+      ctl.createDiv(),
+      metrics.map((m) => ({ id: m.id, label: m.label })),
+      this.overviewMetric,
+      (id) => {
+        if (id === this.overviewMetric) return;
+        this.overviewMetric = id as (typeof metrics)[number]["id"];
+        void this.render();
+      },
+      { placeholder: "Metric" }
+    );
+    const registeredAll = this.plugin.settings.strategies ?? [];
+    mountDropdown(
+      ctl.createDiv(),
+      [{ id: "", label: "Setups: All" }, ...registeredAll.map((s) => ({ id: s.name, label: `Setups: ${s.name}` }))],
+      this.overviewPick,
+      (id) => {
+        if (id === this.overviewPick) return;
+        this.overviewPick = id;
+        void this.render();
+      },
+      { placeholder: "Setups: All" }
+    );
+
+    const metric = metrics.find((m) => m.id === this.overviewMetric) ?? metrics[0];
+    const rows = registeredAll
+      .filter((s) => !this.overviewPick || s.name === this.overviewPick)
+      .map((s) => {
+        const g = stats.get(s.name.trim().toLowerCase()) ?? emptyStat();
+        const series = g.series.filter((t) =>
+          this.overviewSide === "wins" ? netPnl(t) > 0 : this.overviewSide === "losses" ? netPnl(t) < 0 : true
+        );
+        const n = series.length;
+        let grossWin = 0;
+        let grossLoss = 0;
+        let net = 0;
+        let wins = 0;
+        for (const t of series) {
+          const v = netPnl(t);
+          net += v;
+          if (v > 0) {
+            wins += 1;
+            grossWin += v;
+          } else if (v < 0) grossLoss -= v;
+        }
+        const rRows = series.map(tradeR).filter((r): r is number => r !== null);
+        let value: number | null = null;
+        if (metric.id === "pf") value = grossLoss > 0 ? grossWin / grossLoss : null;
+        else if (metric.id === "net") value = n ? net : null;
+        else if (metric.id === "winrate") value = n ? (wins / n) * 100 : null;
+        else if (metric.id === "avgr") value = rRows.length ? rRows.reduce((a, b) => a + b, 0) / rRows.length : null;
+        else value = n ? net / n : null;
+        return { name: s.name, status: s.status ?? "active", n, value };
+      })
+      .filter((r): r is { name: string; status: "active" | "testing" | "archived"; n: number; value: number } =>
+        Number.isFinite(r.value)
+      )
+      .sort((a, b) => (a.status === "archived" ? 1 : 0) - (b.status === "archived" ? 1 : 0) || (b.value ?? 0) - (a.value ?? 0));
+
+    // Header line: who leads, and how much of the record still awaits review.
+    const needsReview = registeredAll.reduce((sum, s) => {
+      const g = stats.get(s.name.trim().toLowerCase());
+      return sum + (g?.series.filter((t) => !reviewStatus(t).complete).length ?? 0);
+    }, 0);
+    const best = rows[0];
+    const info = card.createDiv({ cls: "tj-strat-overview-info" });
+    if (best) {
+      const fmt = metric.id === "pf" ? (v: number): string => v.toFixed(2) : metric.id === "avgr" ? (v: number): string => `${v >= 0 ? "+" : ""}${v.toFixed(2)}R` : metric.id === "winrate" ? (v: number): string => `${Math.round(v)}%` : (v: number): string => fmtMoney(v);
+      info.createSpan({ text: "Best performer: " });
+      const lead = info.createEl("b", { text: best.name });
+      lead.addClass(metric.id === "net" || metric.id === "exp" || metric.id === "avgr" ? toneClass(best.value) : "tj-pos");
+      info.createSpan({ text: ` · ${fmt(best.value)} ${metric.label.toLowerCase()} · ${best.n} trades · Needs review: ` });
+      const rev = info.createSpan({ text: String(needsReview) });
+      if (needsReview) rev.addClass("tj-warn");
+    }
+
+    if (!rows.length) {
+      card.createDiv({ cls: "tj-strat-chart-empty", text: `No strategy has a ${metric.label.toLowerCase()} to compare yet.` });
+      return;
+    }
+
+    // ---- The bars ----
+    const baseline = metric.id === "pf" ? 1 : metric.id === "winrate" ? 50 : 0;
+    const values = rows.map((r) => r.value);
+    let lo = Math.min(baseline, ...values);
+    let hi = Math.max(baseline, ...values);
+    const padV = (hi - lo || Math.abs(hi) || 1) * 0.15;
+    lo -= padV;
+    hi += padV;
+    const ticks = niceTicks(lo, hi, 6);
+    const span = hi - lo || 1;
+    const labelW = 88;
+    const rowH = 44;
+    const width = Math.max(card.clientWidth || 640, 320);
+    const height = rows.length * rowH + 26;
+    const x = (v: number): number => labelW + ((v - lo) / span) * (width - labelW - 14);
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("width", String(width));
+    svg.setAttribute("height", String(height));
+    svg.setAttribute("class", "tj-strat-overview-svg");
+    const bodyStyle = getComputedStyle(document.body);
+    const good = bodyStyle.getPropertyValue("--tj-tone-good").trim() || "#34d17a";
+    const bad = bodyStyle.getPropertyValue("--tj-tone-bad").trim() || "#ff5d48";
+    for (const v of ticks) {
+      const t = document.createElementNS(svgNS, "line");
+      t.setAttribute("x1", x(v).toFixed(1));
+      t.setAttribute("x2", x(v).toFixed(1));
+      t.setAttribute("y1", "0");
+      t.setAttribute("y2", String(rows.length * rowH));
+      t.setAttribute("class", "grid");
+      svg.appendChild(t);
+      const label = document.createElementNS(svgNS, "text");
+      label.setAttribute("x", x(v).toFixed(1));
+      label.setAttribute("y", String(rows.length * rowH + 16));
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("class", "tj-strat-bar-tick");
+      const fmt =
+        metric.id === "pf"
+          ? (v: number): string => v.toFixed(2)
+          : metric.id === "net" || metric.id === "exp"
+            ? (v: number): string => fmtMoneyCompact(v)
+            : metric.id === "avgr"
+              ? (v: number): string => `${v >= 0 ? "+" : ""}${v.toFixed(1)}R`
+              : (v: number): string => `${Math.round(v)}%`;
+      label.textContent = fmt(v);
+      svg.appendChild(label);
+    }
+    // The dotted baseline: what a strategy must beat.
+    const base = document.createElementNS(svgNS, "line");
+    base.setAttribute("x1", x(baseline).toFixed(1));
+    base.setAttribute("x2", x(baseline).toFixed(1));
+    base.setAttribute("y1", "0");
+    base.setAttribute("y2", String(rows.length * rowH));
+    base.setAttribute("class", "zero");
+    svg.appendChild(base);
+    rows.forEach((r, i) => {
+      const yMid = i * rowH + rowH / 2;
+      const name = document.createElementNS(svgNS, "text");
+      name.setAttribute("x", "6");
+      name.setAttribute("y", (yMid + 4).toFixed(1));
+      name.setAttribute("class", "tj-strat-bar-label");
+      name.textContent = r.name.length > 12 ? `${r.name.slice(0, 11)}…` : r.name;
+      svg.appendChild(name);
+      const barY = yMid - 8;
+      const xFrom = x(baseline);
+      const xTo = x(r.value);
+      const bar = document.createElementNS(svgNS, "rect");
+      bar.setAttribute("x", Math.min(xFrom, xTo).toFixed(1));
+      bar.setAttribute("y", barY.toFixed(1));
+      bar.setAttribute("width", Math.max(2, Math.abs(xTo - xFrom)).toFixed(1));
+      bar.setAttribute("height", "16");
+      bar.setAttribute("rx", "4");
+      bar.setAttribute("fill", r.value >= baseline ? good : bad);
+      if (r.status === "archived") bar.setAttribute("opacity", "0.4");
+      const title = document.createElementNS(svgNS, "title");
+      title.textContent = `${r.name} · ${r.value.toFixed(metric.id === "pf" ? 2 : 2)} · ${r.n} trades`;
+      bar.appendChild(title);
+      svg.appendChild(bar);
+      const hit = document.createElementNS(svgNS, "rect");
+      hit.setAttribute("x", "0");
+      hit.setAttribute("y", String(i * rowH));
+      hit.setAttribute("width", String(width));
+      hit.setAttribute("height", String(rowH));
+      hit.setAttribute("fill", "transparent");
+      hit.setAttribute("cursor", "pointer");
+      hit.addEventListener("click", () => {
+        this.selected = r.name;
+        this.rulesEditing = false;
+        void this.render();
+      });
+      svg.appendChild(hit);
+    });
+    card.createDiv({ cls: "tj-strat-overview-chart" }).appendChild(svg);
+  }
+
   /** One overview card: click opens the strategy's own page. */
   private renderCard(grid: HTMLElement, name: string, stats: Map<string, StratStat>, captureFocus: (el: HTMLInputElement) => void): void {
     const g = stats.get(name.toLowerCase()) ?? emptyStat();
-    const item = grid.createDiv({ cls: "tj-strat-grid-item" });
+    const rec = (this.plugin.settings.strategies ?? []).find((s) => s.name === name);
+    const status = rec?.status ?? "active";
+    const item = grid.createDiv({ cls: "tj-strat-grid-item" + (status === "archived" ? " is-archived" : "") });
     item.addEventListener("click", () => {
       this.selected = name;
       this.rulesEditing = false;
@@ -630,7 +821,11 @@ export class SetupsView extends ItemView {
       });
       return;
     }
-    top.createDiv({ cls: "tj-strat-item-name", text: name });
+    const nameEl = top.createDiv({ cls: "tj-strat-item-name", text: name });
+    if (status !== "active") {
+      const chip = nameEl.createSpan({ cls: `tj-strat-item-status is-${status}`, text: status });
+      chip.setAttr("title", status === "testing" ? "Under trial — judged like the rest until you decide" : "Parked: still visible, judged by nothing new");
+    }
 
     const actions = item.createDiv({ cls: "tj-strat-item-actions" });
     const renameBtn = actions.createEl("button", { cls: "tj-iconbtn" });
@@ -733,6 +928,24 @@ export class SetupsView extends ItemView {
     if (streak) titleBlock.createSpan({ cls: "tj-strat-detail-streak", text: streak });
 
     const actions = titleRow.createDiv({ cls: "tj-strat-item-actions" });
+    // Lifecycle: the strategy's own state, shown wherever its name is.
+    const rec = (this.plugin.settings.strategies ?? []).find((s) => s.name === name);
+    const status = rec?.status ?? "active";
+    const statusSeg = actions.createDiv({ cls: "tj-strat-status-seg" });
+    for (const [id, label] of [
+      ["active", "Active"],
+      ["testing", "Testing"],
+      ["archived", "Archived"],
+    ] as const) {
+      statusSeg.createEl("button", {
+        cls: "tj-add-seg-btn" + (status === id ? " on" : ""),
+        text: label,
+        attr: { type: "button" },
+      }).addEventListener("click", () => {
+        if (status === id) return;
+        void this.plugin.setStrategyStatus(name, id);
+      });
+    }
     const noteBtn = actions.createEl("button", { cls: "tj-iconbtn" });
     setIcon(noteBtn, "book-open");
     attachTip(noteBtn, { title: "Open the strategy note", sub: "The note in your vault, outside this panel." });
@@ -750,19 +963,35 @@ export class SetupsView extends ItemView {
     attachTip(delBtn, { title: "Remove from the list", sub: "Trades and the strategy note stay as they are." });
     delBtn.addEventListener("click", () => void this.removeStrategy(name));
 
-    // ---- Metric grid ----
-    const grid = main.createDiv({ cls: "tj-strat-statgrid" });
+    // ---- Stat strip: the five numbers the chart is read against ----
+    let cum = 0;
+    let peak = 0;
+    let maxDD = 0;
+    for (const t of g.series) {
+      cum += netPnl(t);
+      peak = Math.max(peak, cum);
+      maxDD = Math.max(maxDD, peak - cum);
+    }
+    const grid = main.createDiv({ cls: "tj-strat-statstrip" });
     const stat = (label: string, value: string, cls = ""): void => {
-      const cell = grid.createDiv({ cls: "tj-strat-stat" });
+      const cell = grid.createDiv({ cls: `tj-strat-stat ${cls}`.trim() });
       cell.createDiv({ cls: "tj-strat-stat-l", text: label });
-      cell.createDiv({ cls: `tj-strat-stat-v ${cls}`.trim(), text: value });
+      cell.createDiv({ cls: `tj-strat-stat-v ${cls === "is-hypothetical" ? "" : cls}`.trim(), text: value });
     };
-    stat("Trades", String(g.n));
-    stat("Net", g.n ? fmtMoney(g.net) : "—", g.n ? toneClass(g.net) : "");
-    stat("Win rate", g.n ? `${Math.round((g.wins / g.n) * 100)}%` : "—");
-    stat("Profit factor", g.n ? profitFactor(g) : "—");
-    stat("Avg R", g.n ? fmtAvgR(g.rSum, g.rN) : "—", g.rN ? toneClass(g.rSum / (g.rN || 1)) : "");
-    stat("Missed", g.missedN ? `${g.missedN} · ${fmtMoney(g.missedPnl)}` : "0", g.missedN ? "is-hypothetical" : "");
+    stat("Profit factor", g.n ? profitFactor(g) : "—", g.n ? profitFactorClass(g) : "");
+    stat("Total P&L", g.n ? fmtMoney(g.net) : "—", g.n ? toneClass(g.net) : "");
+    stat("Win rate", g.n ? `${Math.round((g.wins / g.n) * 100)}%` : "—", g.n ? (g.wins / g.n >= 0.5 ? "tj-pos" : "tj-neg") : "");
+    stat("Expectancy", g.n ? fmtMoney(g.net / g.n) : "—", g.n ? toneClass(g.net / g.n) : "");
+    stat("Max drawdown", g.series.length ? fmtMoney(-maxDD) : "—", g.series.length && maxDD > 0 ? "tj-neg" : "");
+    if (g.series.length) {
+      const line = main.createDiv({ cls: "tj-strat-detail-meta" });
+      line.createSpan({ text: `${g.n} ${g.n === 1 ? "trade" : "trades"}` });
+      if (g.rN) {
+        const rAvg = g.rSum / g.rN;
+        line.createSpan({ text: ` · Avg ${rAvg >= 0 ? "+" : ""}${rAvg.toFixed(2)}R` });
+      }
+      line.createSpan({ text: g.missedN ? ` · Missed ${g.missedN} (${fmtMoney(g.missedPnl)})` : " · Missed 0" });
+    }
 
     // ---- Cumulative chart, in dollars or in R ----
     const chartCard = main.createDiv({ cls: "tj-strat-card tj-strat-chartcard" });
@@ -791,14 +1020,20 @@ export class SetupsView extends ItemView {
       value: valueOf,
       fmt: fmtOf,
       axisFmt: this.chartMode === "r" ? fmtOf : fmtMoneyCompact,
+      cssHeight: 420,
     });
     if (this.chartMode === "r") {
       chartEl.setAttr("title", "Cumulative R — trades without a recorded stop cannot sit on an R curve, so they are left out.");
     }
 
+    // ---- Everything beside the chart: rules left, the trade shapes right ----
+    const midGrid = main.createDiv({ cls: "tj-strat-detail-grid" });
+    const leftCol = midGrid.createDiv({ cls: "tj-strat-detail-col" });
+    const rightCol = midGrid.createDiv({ cls: "tj-strat-detail-col" });
+
     // ---- Outcomes: one bar per trade, tallest = biggest move ----
     if (g.series.length) {
-      const ocCard = main.createDiv({ cls: "tj-strat-card" });
+      const ocCard = rightCol.createDiv({ cls: "tj-strat-card" });
       ocCard.createDiv({ cls: "tj-strat-card-title", text: "Outcomes" });
       ocCard.createDiv({
         cls: "tj-strat-outcome-cap",
@@ -824,7 +1059,7 @@ export class SetupsView extends ItemView {
       syms.set(k, s);
     }
     if (syms.size > 1) {
-      const symCard = main.createDiv({ cls: "tj-strat-card" });
+      const symCard = rightCol.createDiv({ cls: "tj-strat-card" });
       symCard.createDiv({ cls: "tj-strat-card-title", text: "By symbol" });
       const rowsEl = symCard.createDiv({ cls: "tj-strat-symbols" });
       const symMax = Math.max(...[...syms.values()].map((s) => Math.abs(s.net)), 1);
@@ -839,7 +1074,7 @@ export class SetupsView extends ItemView {
     }
 
     // ---- Rules ----
-    const rulesCard = main.createDiv({ cls: "tj-strat-card tj-strat-rulescard" });
+    const rulesCard = leftCol.createDiv({ cls: "tj-strat-card tj-strat-rulescard" });
     const rulesHead = rulesCard.createDiv({ cls: "tj-strat-card-head" });
     rulesHead.createDiv({ cls: "tj-strat-card-title", text: "Rules" });
     const bodyText = await this.plugin.readStrategyNoteBody(name);
@@ -890,7 +1125,7 @@ export class SetupsView extends ItemView {
 
     // ---- Recent trades ----
     if (g.series.length) {
-      const recentCard = main.createDiv({ cls: "tj-strat-card" });
+      const recentCard = rightCol.createDiv({ cls: "tj-strat-card" });
       recentCard.createDiv({ cls: "tj-strat-card-title", text: "Recent trades" });
       const recent = recentCard.createDiv({ cls: "tj-strat-recent tj-strat-recent-page" });
       for (const t of [...g.series].reverse().slice(0, 8)) {
@@ -906,74 +1141,103 @@ export class SetupsView extends ItemView {
       }
     }
 
-    // ---- Compare ----
-    if (this.compareWith) {
-      this.renderCompare(main, name, this.compareWith, stats);
-    } else {
-      const others = [...stats.keys()].filter((k) => k !== name.toLowerCase() && (stats.get(k)?.n ?? 0) > 0);
-      if (others.length) {
-        const bar = main.createDiv({ cls: "tj-strat-compare-bar" });
-        bar.createSpan({ cls: "tj-strat-compare-l", text: "Compare with" });
-        const items: DropdownItem[] = others.map((k) => ({ id: k, label: this.strategyLabel(k) }));
-        mountDropdown(
-          bar.createDiv({ cls: "tj-strat-compare-pick" }),
-          items,
-          "",
-          (id) => {
-            this.compareWith = id;
-            void this.render();
-          },
-          { placeholder: "Pick a strategy" }
-        );
-      }
+    // ---- Linked notes and prints, kept on the strategy note's frontmatter ----
+    const metaGrid = main.createDiv({ cls: "tj-strat-detail-grid" });
+    await this.renderLinkedNotes(metaGrid, name);
+    await this.renderPrints(metaGrid, name);
+  }
+
+  /** Notes the strategy is read against — stored on its note, opened here. */
+  private async renderLinkedNotes(host: HTMLElement, name: string): Promise<void> {
+    const card = host.createDiv({ cls: "tj-strat-card" });
+    card.createDiv({ cls: "tj-strat-card-title", text: "Linked notes" });
+    const meta = await this.plugin.readStrategyNoteMeta(name);
+    const chips = card.createDiv({ cls: "tj-strat-linked" });
+    if (!meta.linked.length) {
+      chips.createDiv({ cls: "tj-strat-rules-empty", text: "No notes linked yet — link one below." });
     }
-  }
-
-  /** The registry's own spelling of a stat key, or the key itself. */
-  private strategyLabel(k: string): string {
-    const rec = (this.plugin.settings.strategies ?? []).find((s) => s.name.trim().toLowerCase() === k);
-    return rec?.name ?? k;
-  }
-
-  /** Two strategies side by side: the same numbers, twice, one curve each. */
-  private renderCompare(main: HTMLElement, name: string, otherName: string, stats: Map<string, StratStat>): void {
-    const a = stats.get(name.toLowerCase()) ?? emptyStat();
-    const b = stats.get(otherName.toLowerCase()) ?? emptyStat();
-    const labelOf = (k: string): string => this.strategyLabel(k);
-    const card = main.createDiv({ cls: "tj-strat-card" });
-    const head = card.createDiv({ cls: "tj-strat-card-head" });
-    head.createDiv({ cls: "tj-strat-card-title", text: `${labelOf(name)} vs ${labelOf(otherName)}` });
-    const clear = head.createEl("button", { cls: "tj-btn tj-mini", text: "✕ close" });
-    clear.addEventListener("click", () => {
-      this.compareWith = null;
-      void this.render();
+    for (const path of meta.linked) {
+      const chip = chips.createDiv({ cls: "tj-strat-linked-chip" });
+      const label = path.split("/").pop()?.replace(/\.md$/, "") || path;
+      chip.createSpan({ cls: "tj-strat-linked-name", text: label });
+      chip.setAttr("title", "Open the note");
+      chip.addEventListener("click", () => void this.plugin.openVaultPath(path));
+      const x = chip.createEl("button", { cls: "tj-strat-linked-x", text: "✕", attr: { type: "button" } });
+      x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void (async () => {
+          await this.plugin.saveStrategyNoteMeta(name, { linked: meta.linked.filter((p) => p !== path) });
+          await this.render();
+        })();
+      });
+    }
+    const add = card.createDiv({ cls: "tj-strat-linked-add" });
+    const input = add.createEl("input", {
+      type: "text",
+      cls: "tj-add-input",
+      attr: { list: `tj-strat-note-list`, spellcheck: "false", placeholder: "Link a note…" },
     });
-
-    const cols = card.createDiv({ cls: "tj-strat-compare-cols" });
-    const column = (s: StratStat, label: string): void => {
-      const col = cols.createDiv({ cls: "tj-strat-compare-col" });
-      col.createDiv({ cls: "tj-strat-compare-name", text: label });
-      const pair = (l: string, v: string, cls = ""): void => {
-        const row = col.createDiv({ cls: "tj-strat-compare-row" });
-        row.createSpan({ text: l });
-        row.createSpan({ cls: `tj-strat-compare-v ${cls}`.trim(), text: v });
-      };
-      pair("Trades", String(s.n));
-      pair("Net", s.n ? fmtMoney(s.net) : "—", s.n ? toneClass(s.net) : "");
-      pair("Win rate", s.n ? `${Math.round((s.wins / s.n) * 100)}%` : "—");
-      pair("Profit factor", s.n ? profitFactor(s) : "—");
-      pair("Avg R", s.n ? fmtAvgR(s.rSum, s.rN) : "—");
-      pair("Missed", s.missedN ? `${s.missedN} · ${fmtMoney(s.missedPnl)}` : "0");
+    const dl = add.createEl("datalist", { attr: { id: "tj-strat-note-list" } });
+    for (const f of this.plugin.app.vault.getMarkdownFiles()) {
+      if (f.path.includes("library/strategies") && f.name !== `${name}.md`) continue;
+      dl.createEl("option", { attr: { value: f.path } });
+    }
+    const commit = () => {
+      const raw = input.value.trim();
+      if (!raw) return;
+      const path = raw.endsWith(".md") ? raw : `${raw}.md`;
+      if (meta.linked.includes(path)) return;
+      void (async () => {
+        await this.plugin.saveStrategyNoteMeta(name, { linked: [...meta.linked, path] });
+        await this.render();
+      })();
     };
-    column(a, labelOf(name));
-    column(b, labelOf(otherName));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") commit();
+    });
+    input.addEventListener("change", commit);
+  }
 
-    const chartEl = card.createDiv({ cls: "tj-strat-chartbox" });
-    multiLineChart(
-      chartEl,
-      [{ series: a.series }, { series: b.series }],
-      { axisFmt: fmtMoneyCompact }
-    );
+  /** The strategy's prints: stored with its note, shown as a thumbnail grid. */
+  private async renderPrints(host: HTMLElement, name: string): Promise<void> {
+    const card = host.createDiv({ cls: "tj-strat-card" });
+    const head = card.createDiv({ cls: "tj-strat-card-head" });
+    head.createDiv({ cls: "tj-strat-card-title", text: "Screenshots" });
+    const meta = await this.plugin.readStrategyNoteMeta(name);
+    const add = head.createEl("button", { cls: "tj-btn tj-mini", text: "＋ add" });
+    const fileInput = add.createEl("input", { type: "file", attr: { accept: "image/png,image/jpeg,image/webp" } });
+    fileInput.style.display = "none";
+    add.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      void (async () => {
+        const buf = await file.arrayBuffer();
+        const saved = await this.plugin.addStrategyPrint(name, buf, ext);
+        if (!saved) new Notice("Could not store the screenshot.");
+        await this.render();
+      })();
+    });
+    if (!meta.prints.length) {
+      card.createDiv({ cls: "tj-strat-rules-empty", text: "No screenshots yet — ＋ add to attach one; they live with the strategy note." });
+    }
+    const grid = card.createDiv({ cls: "tj-strat-prints" });
+    for (const path of meta.prints) {
+      const file = this.plugin.app.vault.getAbstractFileByPath(path);
+      if (!(file instanceof TFile)) continue;
+      const cell = grid.createDiv({ cls: "tj-strat-print" });
+      const img = cell.createEl("img", { attr: { src: this.plugin.app.vault.getResourcePath(file), alt: path } });
+      img.style.cursor = "zoom-in";
+      img.addEventListener("click", () => void this.plugin.openVaultPath(path));
+      const x = cell.createEl("button", { cls: "tj-strat-print-x", text: "✕", attr: { type: "button", title: "Remove from the list (the file stays in the vault)" } });
+      x.addEventListener("click", () => {
+        void (async () => {
+          await this.plugin.removeStrategyPrint(name, path);
+          await this.render();
+        })();
+      });
+    }
   }
 
   // -------------------------------------------------------------- registry --

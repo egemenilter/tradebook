@@ -1049,6 +1049,7 @@ export default class TradebookPlugin extends Plugin {
       id: "st_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       name: clean,
       createdAt: new Date().toISOString(),
+      status: "active",
     };
     list.push(rec);
     list.sort((a, b) => a.name.localeCompare(b.name));
@@ -1241,6 +1242,106 @@ export default class TradebookPlugin extends Plugin {
       console.error("[tradebook] could not save the strategy note", err);
       return false;
     }
+  }
+
+  /** A strategy note's own frontmatter lists: linked vault notes and prints. */
+  async readStrategyNoteMeta(name: string): Promise<{ linked: string[]; prints: string[] }> {
+    const out = { linked: [] as string[], prints: [] as string[] };
+    const rec = this.findStrategy(name);
+    if (!rec) return out;
+    const file = this.app.vault.getAbstractFileByPath(this.strategyNotePath(rec.name));
+    if (!(file instanceof TFile)) return out;
+    try {
+      const content = await this.app.vault.cachedRead(file);
+      const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)?.[1] ?? "";
+      const readList = (key: string): string[] => {
+        const values: string[] = [];
+        const inline = new RegExp(`^${key}:\\s*\\[(.*)\\]\\s*$`, "m").exec(fm);
+        if (inline) {
+          for (const raw of inline[1].split(",")) {
+            const v = raw.trim().replace(/^["']|["']$/g, "");
+            if (v) values.push(v);
+          }
+          return values;
+        }
+        const lines = fm.split(/\r?\n/);
+        const idx = lines.findIndex((l) => new RegExp(`^${key}:\\s*$`).test(l));
+        if (idx === -1) return values;
+        for (let i = idx + 1; i < lines.length; i++) {
+          const item = /^\s+-\s+"?([^"]+)"?\s*$/.exec(lines[i]);
+          if (!item) break;
+          values.push(item[1].trim());
+        }
+        return values;
+      };
+      out.linked = readList("linked_notes");
+      out.prints = readList("strategy_prints");
+    } catch (err) {
+      console.error("[tradebook] could not read the strategy note meta", err);
+    }
+    return out;
+  }
+
+  /** Patch the strategy note's meta lists; everything else stays untouched. */
+  async saveStrategyNoteMeta(name: string, patch: { linked?: string[]; prints?: string[] }): Promise<boolean> {
+    const rec = this.findStrategy(name);
+    if (!rec) return false;
+    const file = this.app.vault.getAbstractFileByPath(this.strategyNotePath(rec.name));
+    if (!(file instanceof TFile)) return false;
+    try {
+      const fmgr = this.app.fileManager as unknown as {
+        processFrontMatter?: (f: TFile, fn: (fm: Record<string, unknown>) => void) => Promise<void>;
+      };
+      if (typeof fmgr.processFrontMatter !== "function") return false;
+      await fmgr.processFrontMatter(file, (fm) => {
+        if (patch.linked) fm.linked_notes = patch.linked;
+        if (patch.prints) fm.strategy_prints = patch.prints;
+      });
+      return true;
+    } catch (err) {
+      console.error("[tradebook] could not save the strategy note meta", err);
+      return false;
+    }
+  }
+
+  /** Store a pasted/printed image with the strategy and list it on its note. */
+  async addStrategyPrint(name: string, data: ArrayBuffer, ext: string): Promise<string | null> {
+    const dir = normalizePath(`${this.strategyNoteDir()}/attachments`);
+    await this.ensureVaultFolder(dir);
+    const slug = sanitizeFilename(name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "strategy";
+    const path = normalizePath(`${dir}/${slug}-${Date.now()}.${ext}`);
+    try {
+      await this.app.vault.createBinary(path, data);
+    } catch (err) {
+      console.error("[tradebook] could not store the strategy print", err);
+      return null;
+    }
+    const meta = await this.readStrategyNoteMeta(name);
+    const ok = await this.saveStrategyNoteMeta(name, { prints: [...meta.prints, path] });
+    return ok ? path : null;
+  }
+
+  async removeStrategyPrint(name: string, path: string): Promise<boolean> {
+    const meta = await this.readStrategyNoteMeta(name);
+    return await this.saveStrategyNoteMeta(name, { prints: meta.prints.filter((p) => p !== path) });
+  }
+
+  /** Open any vault file by path — linked notes use it. */
+  async openVaultPath(path: string): Promise<void> {
+    try {
+      await this.app.workspace.openLinkText(path.replace(/\.md$/, ""), "", false);
+    } catch (err) {
+      console.error("[tradebook] could not open", path, err);
+    }
+  }
+
+  /** A strategy's lifecycle, without rewriting anything else. */
+  async setStrategyStatus(name: string, status: StrategyRecord["status"]): Promise<void> {
+    const rec = this.findStrategy(name);
+    if (!rec) return;
+    rec.status = status ?? "active";
+    await this.saveSettings();
+    await this.reloadAllViews();
   }
 
   getAccountRules(): AccountRule[] {

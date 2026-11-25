@@ -13942,6 +13942,216 @@ justify-content: space-between;
   opacity: 0.7;
 }
 
+/* The Journalit-style stat strip: five numbers in one row over the chart. */
+.tj-strat-statstrip {
+  display: flex;
+  gap: var(--tj-sp-2);
+  margin-bottom: var(--tj-sp-3);
+}
+
+.tj-strat-statstrip .tj-strat-stat {
+  flex: 1;
+  text-align: center;
+  border: none;
+  padding: 4px 6px;
+}
+
+.tj-strat-statstrip .tj-strat-stat-v {
+  font-size: var(--tj-fs-big);
+}
+
+.tj-strat-detail-meta {
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-3);
+  margin: -4px 0 8px;
+}
+
+/* Below the big chart: rules on the left, the trade shapes on the right. */
+.tj-strat-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--tj-sp-3);
+  align-items: start;
+  margin-bottom: var(--tj-sp-3);
+}
+
+.tj-strat-detail-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tj-sp-3);
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .tj-strat-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The overview comparison: side toggle, metric and setups pickers, bar rows. */
+.tj-strat-overview-ctl {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.tj-strat-overview-info {
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-2);
+  margin-bottom: 4px;
+}
+
+.tj-strat-overview-info b {
+  color: var(--text-normal);
+}
+
+.tj-strat-overview-info .tj-warn {
+  color: var(--tj-tone-mid, #d9a441);
+  font-weight: 600;
+}
+
+.tj-strat-overview-chart {
+  margin-top: 4px;
+}
+
+.tj-strat-overview-svg {
+  display: block;
+  max-width: 100%;
+}
+
+.tj-strat-bar-label {
+  fill: var(--tj-fg-2, #a8aeb4);
+  font-size: 11px;
+}
+
+.tj-strat-bar-tick {
+  fill: var(--tj-fg-3, #8a9099);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tj-strat-overview-svg .grid {
+  stroke: var(--background-modifier-border);
+  stroke-dasharray: 2 4;
+}
+
+.tj-strat-overview-svg .zero {
+  stroke: var(--tj-fg-3, #8a9099);
+  stroke-dasharray: 4 4;
+}
+
+/* Strategy lifecycle: a small chip wherever the name is, and archived cards
+   dimmed — parked, not gone. */
+.tj-strat-item-status {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--background-modifier-border);
+  color: var(--tj-fg-3);
+}
+
+.tj-strat-item-status.is-testing {
+  color: var(--tj-tone-mid, #d9a441);
+  border-color: color-mix(in srgb, var(--tj-tone-mid, #d9a441) 40%, transparent);
+}
+
+.tj-strat-item-status.is-archived {
+  color: var(--tj-fg-3);
+}
+
+.tj-strat-grid-item.is-archived {
+  opacity: 0.45;
+}
+
+.tj-strat-status-seg {
+  display: flex;
+  gap: 4px;
+  margin-right: 6px;
+}
+
+/* Linked notes: chips that open their note, with a remove cross. */
+.tj-strat-linked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tj-strat-linked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  font-size: var(--tj-fs-small);
+  cursor: pointer;
+}
+
+.tj-strat-linked-chip:hover {
+  background: var(--background-modifier-hover);
+}
+
+.tj-strat-linked-x {
+  border: none;
+  background: transparent;
+  color: var(--tj-fg-3);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+}
+
+.tj-strat-linked-x:hover {
+  color: var(--tj-tone-bad);
+}
+
+.tj-strat-linked-add {
+  display: flex;
+}
+
+.tj-strat-linked-add .tj-add-input {
+  width: 100%;
+}
+
+/* Prints: a thumbnail grid with a remove cross on each. */
+.tj-strat-prints {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+}
+
+.tj-strat-print {
+  position: relative;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tj-strat-print img {
+  width: 100%;
+  height: 84px;
+  object-fit: cover;
+  display: block;
+}
+
+.tj-strat-print-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border-radius: 4px;
+  font-size: 10px;
+  padding: 1px 4px;
+  cursor: pointer;
+}
+
 .tj-strat-chartcard {
   margin-bottom: 10px;
 }
