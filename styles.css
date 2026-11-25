@@ -14004,7 +14004,7 @@ justify-content: space-between;
 .tj-strat-chart polyline,
 .tj-strat-chart path.tj-strat-chart-line {
   fill: none;
-  stroke-width: 2;
+  stroke-width: 2.5;
   stroke-linejoin: round;
   stroke-linecap: round;
 }

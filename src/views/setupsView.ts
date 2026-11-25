@@ -58,39 +58,25 @@ function streakLabel(series: Trade[]): string {
 let chartSeq = 0;
 
 /**
- * A smooth curve through the points that never overshoots: monotone cubic
- * interpolation — the same family of curve a proper chart library draws.
- * Flat stays flat, a peak stays a peak; the curve just stops being angular.
+ * A smooth curve through the points: uniform Catmull-Rom, the round-shouldered
+ * spline a proper chart library draws — peaks stay round, dips stay round, and
+ * the curve reads as one flowing line instead of a chain of straightish beats.
+ * (A strict monotone variant was tried first; it refuses to overshoot but
+ * flattens at every data point, which is exactly the stiffness being fixed.)
  */
 function monotonePath(xs: number[], ys: number[]): string {
   const n = xs.length;
   if (n < 2) return "";
   if (n === 2) return `M ${xs[0].toFixed(2)} ${ys[0].toFixed(2)} L ${xs[1].toFixed(2)} ${ys[1].toFixed(2)}`;
-  const dx: number[] = [];
-  const slopes: number[] = [];
-  for (let i = 0; i < n - 1; i++) {
-    dx.push(xs[i + 1] - xs[i]);
-    slopes.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
-  }
-  // Tangents: neighbours that disagree in sign flatten to zero, so the curve
-  // cannot swing past a local low or high.
-  const tangents: number[] = [slopes[0]];
-  for (let i = 1; i < n - 1; i++) {
-    if (slopes[i - 1] * slopes[i] <= 0) {
-      tangents.push(0);
-    } else {
-      const common = dx[i - 1] + dx[i];
-      tangents.push((3 * common) / ((common + dx[i]) / slopes[i - 1] + (common + dx[i - 1]) / slopes[i]));
-    }
-  }
-  tangents.push(slopes[n - 2]);
+  const px = (i: number): number => xs[Math.max(0, Math.min(n - 1, i))];
+  const py = (i: number): number => ys[Math.max(0, Math.min(n - 1, i))];
   let path = `M ${xs[0].toFixed(2)} ${ys[0].toFixed(2)}`;
   for (let i = 0; i < n - 1; i++) {
-    const cx1 = xs[i] + dx[i] / 3;
-    const cy1 = ys[i] + (tangents[i] * dx[i]) / 3;
-    const cx2 = xs[i + 1] - dx[i] / 3;
-    const cy2 = ys[i + 1] - (tangents[i + 1] * dx[i]) / 3;
-    path += ` C ${cx1.toFixed(2)} ${cy1.toFixed(2)} ${cx2.toFixed(2)} ${cy2.toFixed(2)} ${xs[i + 1].toFixed(2)} ${ys[i + 1].toFixed(2)}`;
+    const c1x = px(i) + (px(i + 1) - px(i - 1)) / 6;
+    const c1y = py(i) + (py(i + 1) - py(i - 1)) / 6;
+    const c2x = px(i + 1) - (px(i + 2) - px(i)) / 6;
+    const c2y = py(i + 1) - (py(i + 2) - py(i)) / 6;
+    path += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${px(i + 1).toFixed(2)} ${py(i + 1).toFixed(2)}`;
   }
   return path;
 }
@@ -307,8 +293,16 @@ function multiLineChart(
     l.style.top = `${((y(v) / h) * cssH).toFixed(0)}px`;
   }
   const maxN = Math.max(...usable.map((pts) => pts.length));
-  wrap.createDiv({ cls: "tj-chart-xlabel is-first", text: "#1" });
-  if (maxN > 1) wrap.createDiv({ cls: "tj-chart-xlabel is-last", text: `#${maxN}` });
+  // Every trade gets its number on the axis; a long series is thinned so the
+  // numbers never collide, but #1 and #N are always printed.
+  const every = maxN <= 10 ? 1 : Math.ceil(maxN / 8);
+  for (let k = 0; k < maxN; k++) {
+    if (k % every !== 0 && k !== maxN - 1) continue;
+    const label = wrap.createDiv({ cls: "tj-chart-xlabel", text: `#${k + 1}` });
+    const frac = (pad + (k * (w - 2 * pad)) / (maxN - 1)) / w;
+    label.style.left = `calc(52px + (100% - 60px) * ${frac.toFixed(4)})`;
+    label.style.transform = k === 0 ? "none" : k === maxN - 1 ? "translateX(-100%)" : "translateX(-50%)";
+  }
 }
 
 /**
