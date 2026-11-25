@@ -289,7 +289,7 @@ const TRADESEA_HEADER_NAMES = [
 const TRADESEA_HEADER_KEYS = TRADESEA_HEADER_NAMES.map((name) => name.toLowerCase());
 const TRADESEA_ACCOUNT_LABEL = "TradeSea";
 
-export type CsvKind = "cash" | "orders" | "fills" | "tradesea" | "unknown";
+export type CsvKind = "cash" | "orders" | "fills" | "tradesea" | "roboforex" | "unknown";
 
 /**
  * The account a file kind files its rows under when the file names none of its
@@ -299,11 +299,12 @@ export type CsvKind = "cash" | "orders" | "fills" | "tradesea" | "unknown";
  * has one row to point at. Every other report names its account, so it adds
  * nothing here.
  */
-const KIND_ACCOUNT_LABEL: Record<"cash" | "orders" | "fills" | "tradesea" | "unknown", string> = {
+const KIND_ACCOUNT_LABEL: Record<"cash" | "orders" | "fills" | "tradesea" | "roboforex" | "unknown", string> = {
   cash: "",
   orders: "",
   fills: "",
   tradesea: TRADESEA_ACCOUNT_LABEL,
+  roboforex: "",
   unknown: "",
 };
 

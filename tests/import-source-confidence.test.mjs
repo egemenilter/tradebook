@@ -220,7 +220,7 @@ test("the report chip is labelled by the gate, not by a second reading of the he
   const ui = read("src/views/importUi.ts");
   const fileKind = ui.slice(ui.indexOf("private fileKind("), ui.indexOf("private batchKind("));
 
-  assert.match(fileKind, /csvKind\(text\)/, "the chip label comes from the gate");
+  assert.match(fileKind, /csvKind\(f\.text\)/, "the chip label comes from the gate");
   assert.doesNotMatch(
     fileKind,
     /includes\("order id"\)|includes\("fill id"\)/,

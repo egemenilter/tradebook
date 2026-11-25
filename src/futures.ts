@@ -213,6 +213,7 @@ export interface UnpricedPair {
 }
 
 const FX_UNPRICED_RECORD: Record<string, UnpricedPair> = {
+  XAUEUR: { name: "Gold / Euro" },
   EURAUD: { name: "Euro / Australian Dollar" },
   EURCAD: { name: "Euro / Canadian Dollar" },
   EURCHF: { name: "Euro / Swiss Franc" },

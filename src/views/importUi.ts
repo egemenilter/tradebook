@@ -1,6 +1,6 @@
 import { Modal, Notice, setIcon } from "obsidian";
 import type TradebookPlugin from "../main";
-import { csvKind, hasTradeSeaBatchConflict, mergeCashCosts, parseCashHistoryCsv, parseTradeovateCsv } from "../csv";
+import { csvKind, hasTradeSeaBatchConflict, mergeCashCosts, parseCashHistoryCsv, parseTradeovateCsv, type CsvKind } from "../csv";
 import type { CashCosts } from "../csv";
 import type { ImportCosts, ParsedResult, PropAccount, TimeIssues, Trade } from "../types";
 import { TIMEZONE_OPTIONS, detectSystemZone, fmtMoney2, zoneShortLabel } from "../tz";
@@ -22,6 +22,7 @@ import { trackingStartOf } from "../lib/tracking";
 import { mountDropdown } from "../lib/dropdown";
 import { attachTip } from "../lib/tip";
 import { netPnl } from "../lib/fees";
+import { isXlsxBuffer, parseRoboForexXlsx } from "../lib/roboreport";
 import { importSummary, writeOutcome } from "../lib/importReport";
 import { applyAssumedRisk, type AssumedRiskResult } from "../lib/risk";
 import type { DropdownItem } from "../lib/dropdown";
@@ -94,7 +95,7 @@ class ImportCsvModal extends Modal {
   // The trades and the costs are two separate decisions: the files with the
   // trades, and — only if the trader wants the exact bill — the platform's own
   // cash history for the same period.
-  private tradeFiles: { name: string; text: string }[] = [];
+  private tradeFiles: { name: string; text: string; kind?: string; buffer?: ArrayBuffer }[] = [];
   private wantCosts = false;
   private cashName = "";
   private cashCosts: CashCosts | null = null;
@@ -157,7 +158,7 @@ class ImportCsvModal extends Modal {
     // moment a file is being read, not to the moment it is being chosen.
     this.headSubEl = txt.createEl("p", {
       cls: "tj-import-sub",
-      text: "Reports → Orders is recommended. Reports → Fills works too. The observed TradeSea orders format is supported.",
+      text: "Reports → Orders is recommended. Reports → Fills works too. The observed TradeSea orders format and the RoboForex Trade History Report (.xlsx) are supported.",
     });
 
     // The journey, so the reader always knows where he is and what is left. It
@@ -351,18 +352,18 @@ class ImportCsvModal extends Modal {
   private renderDropzone(host: HTMLElement): void {
     host.empty();
     const drop = host.createEl("div", { cls: "tj-dropzone" });
-    drop.createDiv({ text: "Drop your CSV files here", cls: "tj-drop-text" });
+    drop.createDiv({ text: "Drop your report files here (CSV or RoboForex .xlsx)", cls: "tj-drop-text" });
     const sub = drop.createDiv({
       text: "One file or many supported reports — read as one batch. One TradeSea export per batch.",
       cls: "tj-drop-sub",
     });
     attachTip(sub, {
       title: "Which report",
-      sub: "Reports → Orders carries every ticket with its fill time, price, status, order type and stop. Reports → Fills is the raw executions. The supported TradeSea orders format carries tickets and fills in one file. Any supported report pairs round-trips; the Performance report cannot be read.",
+      sub: "Reports → Orders carries every ticket with its fill time, price, status, order type and stop. Reports → Fills is the raw executions. The supported TradeSea orders format carries tickets and fills in one file. RoboForex's Trade History Report (.xlsx) carries closed positions with their stops, targets and booked P&L. Any supported report pairs round-trips; the Performance report cannot be read.",
     });
     const fileInput = drop.createEl("input", {
       type: "file",
-      attr: { accept: ".csv,.txt,text/csv", multiple: "true" },
+      attr: { accept: ".csv,.txt,text/csv,.xlsx", multiple: "true" },
     });
     fileInput.setCssStyles({ display: "none" });
     drop.addEventListener("click", () => fileInput.click());
@@ -484,11 +485,20 @@ class ImportCsvModal extends Modal {
       text: files.length > 1 ? `Recognising ${files.length} files…` : `Recognising "${files[0].name}"…`,
     });
     try {
-      const texts: { name: string; text: string }[] = [];
-      for (const f of files) texts.push({ name: f.name, text: await f.text() });
+      // A RoboForex report is an .xlsx workbook — a zip, not text — so every
+      // dropped file is read as bytes first; only text reports read as text.
+      const read: { name: string; text: string; kind: CsvKind; buffer?: ArrayBuffer }[] = [];
+      for (const f of files) {
+        const buffer = await f.arrayBuffer();
+        if (isXlsxBuffer(buffer)) {
+          read.push({ name: f.name, text: "", kind: "roboforex", buffer });
+        } else {
+          const text = await f.text();
+          read.push({ name: f.name, text, kind: csvKind(text) });
+        }
+      }
 
-      const classified = texts.map((t) => ({ ...t, kind: csvKind(t.text) }));
-      if (hasTradeSeaBatchConflict(classified.map((t) => t.kind))) {
+      if (hasTradeSeaBatchConflict(read.map((t) => t.kind))) {
         body.empty();
         const err = body.createDiv({ cls: "tj-error" });
         err.createEl("h3", { text: "Import one TradeSea export at a time" });
@@ -500,12 +510,14 @@ class ImportCsvModal extends Modal {
         return;
       }
 
-      const cashTexts = classified.filter((t) => t.kind === "cash");
-      const execTexts = classified.filter((t) => t.kind === "orders" || t.kind === "fills" || t.kind === "tradesea");
+      const cashTexts = read.filter((t) => t.kind === "cash");
+      const execTexts = read.filter(
+        (t) => t.kind === "orders" || t.kind === "fills" || t.kind === "tradesea" || t.kind === "roboforex"
+      );
       if (!execTexts.length) {
         body.empty();
         const err = body.createDiv({ cls: "tj-error" });
-        const stray = texts.find((t) => csvKind(t.text) === "unknown");
+        const stray = read.find((t) => t.kind === "unknown");
         if (cashTexts.length && !stray) {
           // The one file is the money ledger: it belongs in the costs slot, and
           // without the Orders/Fills export there are no trades to reconstruct.
@@ -518,13 +530,13 @@ class ImportCsvModal extends Modal {
           err.createEl("h3", { text: "No trades export recognised" });
           if (stray) {
             err.createDiv({
-              text: `"${stray.name}" is not an Orders, Fills or TradeSea report — its header carries none of the columns those exports are read by.`,
+              text: `"${stray.name}" is not an Orders, Fills, TradeSea or RoboForex report — its header carries none of the columns those exports are read by.`,
               cls: "tj-error-detail",
             });
           }
         }
         err.createDiv({
-          text: "Export from Tradovate → Reports → Orders (recommended) or Fills, or from TradeSea → Export orders.",
+          text: "Export from Tradovate → Reports → Orders (recommended) or Fills, from TradeSea → Export orders, or from RoboForex → Trade History Report (.xlsx).",
           cls: "tj-error-detail",
         });
         this.busy = false;
@@ -556,7 +568,6 @@ class ImportCsvModal extends Modal {
       this.busy = false;
     }
   }
-
   /** The costs file, dropped in its own slot. */
   private async readCash(file: File): Promise<void> {
     const text = await file.text();
@@ -670,7 +681,23 @@ class ImportCsvModal extends Modal {
     const results: { name: string; result: ParsedResult }[] = [];
     const batchFiles: BatchFileTrades[] = [];
     for (const f of this.tradeFiles) {
-      const result = parseTradeovateCsv(f.text, rules, zones, this.cashCosts ?? undefined);
+      let result: ParsedResult;
+      if (f.kind === "roboforex" && f.buffer) {
+        try {
+          result = await parseRoboForexXlsx(f.buffer, zones);
+        } catch (err) {
+          result = {
+            trades: [],
+            warnings: [`"${f.name}" could not be read as a RoboForex report: ${(err as Error).message}`],
+            skipped: 0,
+            unfilled: 0,
+            unpaired: 0,
+            accountsSeen: [],
+          };
+        }
+      } else {
+        result = parseTradeovateCsv(f.text, rules, zones, this.cashCosts ?? undefined);
+      }
       results.push({ name: f.name, result });
       batchFiles.push({ name: f.name, trades: result.trades });
     }
@@ -722,17 +749,18 @@ class ImportCsvModal extends Modal {
    * export "CSV" would be the one place where the screen disagreed with the
    * reader about what the reader had in hand.
    */
-  private fileKind(text: string): string {
-    const kind = csvKind(text);
+  private fileKind(f: { text: string; kind?: string }): string {
+    const kind = f.kind ?? csvKind(f.text);
     if (kind === "orders") return "Orders export";
     if (kind === "fills") return "Fills export";
     if (kind === "tradesea") return "TradeSea export";
+    if (kind === "roboforex") return "RoboForex report";
     return "CSV";
   }
 
   /** The kind of a whole batch: one name when they agree, "CSV" when they mix. */
   private batchKind(): string {
-    const kinds = new Set(this.tradeFiles.map((f) => this.fileKind(f.text)));
+    const kinds = new Set(this.tradeFiles.map((f) => this.fileKind(f)));
     return kinds.size === 1 ? [...kinds][0] : "CSV";
   }
 
