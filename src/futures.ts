@@ -36,8 +36,6 @@ const CFD_SPECS: Record<string, FuturesSpec> = {
   GBPUSD: { name: "British Pound / US Dollar", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
   AUDUSD: { name: "Australian Dollar / US Dollar", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
   NZDUSD: { name: "New Zealand Dollar / US Dollar", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
-  USDCAD: { name: "US Dollar / Canadian Dollar", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
-  USDCHF: { name: "US Dollar / Swiss Franc", exchange: "RoboForex", group: "fx", pointValue: 100000, tickSize: 0.0001, tickValue: 10 },
 
   // ---- metals (1 Pip Size 0.01; XAUUSD 1 lot = 100 oz, XAGUSD 5000 oz) ----
   XAUUSD: { name: "Gold (spot CFD)", exchange: "RoboForex", group: "metal", pointValue: 100, tickSize: 0.01, tickValue: 1 },
@@ -182,8 +180,6 @@ export const CORE_INSTRUMENTS: CoreInstrument[] = [
   { id: "gbpusd", label: "GBP/USD", mini: "GBPUSD" },
   { id: "audusd", label: "AUD/USD", mini: "AUDUSD" },
   { id: "nzdusd", label: "NZD/USD", mini: "NZDUSD" },
-  { id: "usdcad", label: "USD/CAD", mini: "USDCAD" },
-  { id: "usdchf", label: "USD/CHF", mini: "USDCHF" },
   { id: "us30", label: "US 30 / Dow CFD", mini: "US30" },
   { id: "us500", label: "US 500 / S&P CFD", mini: "US500" },
   { id: "ustec", label: "US Tech / Nasdaq CFD", mini: "USTEC" },
@@ -198,6 +194,67 @@ export const CORE_INSTRUMENTS: CoreInstrument[] = [
 /** Every contract a picker suggests: both sizes of a futures instrument,
  *  the one size of a CFD. */
 export const CORE_SYMBOLS: string[] = CORE_INSTRUMENTS.flatMap((i) => (i.micro ? [i.mini, i.micro] : [i.mini]));
+
+/**
+ * FX pairs whose quote currency is not the dollar — the crosses (EURGBP,
+ * AUDJPY…) and the USD-based pairs the market quotes in another currency
+ * (USDJPY, USDTRY…). One pip of EURGBP is ten euros a lot, and its dollar
+ * value floats with the rate; a fixed dollar figure would be silently wrong,
+ * and the exact number exists only on the platform that carried the trade.
+ *
+ * So these pairs are KNOWN (they autocomplete, the journal names them) but
+ * UNPRICED: the trader records the P&L the platform reported, and the journal
+ * keeps its priced money and its recorded money apart. `USDCAD` and `USDCHF`
+ * move here from the priced registry for the same reason — their quote is
+ * CAD / CHF, not dollars.
+ */
+export interface UnpricedPair {
+  name: string;
+}
+
+const FX_UNPRICED_RECORD: Record<string, UnpricedPair> = {
+  EURAUD: { name: "Euro / Australian Dollar" },
+  EURCAD: { name: "Euro / Canadian Dollar" },
+  EURCHF: { name: "Euro / Swiss Franc" },
+  EURGBP: { name: "Euro / British Pound" },
+  EURJPY: { name: "Euro / Japanese Yen" },
+  EURNZD: { name: "Euro / New Zealand Dollar" },
+  GBPAUD: { name: "British Pound / Australian Dollar" },
+  GBPCAD: { name: "British Pound / Canadian Dollar" },
+  GBPCHF: { name: "British Pound / Swiss Franc" },
+  GBPJPY: { name: "British Pound / Japanese Yen" },
+  GBPNZD: { name: "British Pound / New Zealand Dollar" },
+  AUDCAD: { name: "Australian Dollar / Canadian Dollar" },
+  AUDCHF: { name: "Australian Dollar / Swiss Franc" },
+  AUDJPY: { name: "Australian Dollar / Japanese Yen" },
+  AUDNZD: { name: "Australian Dollar / New Zealand Dollar" },
+  CADCHF: { name: "Canadian Dollar / Swiss Franc" },
+  CADJPY: { name: "Canadian Dollar / Japanese Yen" },
+  NZDCAD: { name: "New Zealand Dollar / Canadian Dollar" },
+  NZDCHF: { name: "New Zealand Dollar / Swiss Franc" },
+  NZDJPY: { name: "New Zealand Dollar / Japanese Yen" },
+  USDJPY: { name: "US Dollar / Japanese Yen" },
+  USDCAD: { name: "US Dollar / Canadian Dollar" },
+  USDCHF: { name: "US Dollar / Swiss Franc" },
+  USDMXN: { name: "US Dollar / Mexican Peso" },
+  USDNOK: { name: "US Dollar / Norwegian Krone" },
+  USDSEK: { name: "US Dollar / Swedish Krona" },
+  USDTRY: { name: "US Dollar / Turkish Lira" },
+  USDZAR: { name: "US Dollar / South African Rand" },
+};
+
+/** The unpriced pair a symbol names, or null. A `.P`-style platform suffix is
+ *  tolerated, the way a priced root tolerates one. */
+export function unpricedPair(symbol: string): UnpricedPair | null {
+  const normalized = (symbol || "").trim().toUpperCase().replace(/\.[A-Z]+$/, "");
+  return FX_UNPRICED_RECORD[normalized] ?? null;
+}
+
+export const FX_UNPRICED: string[] = Object.keys(FX_UNPRICED_RECORD).sort();
+
+/** Every symbol the picker suggests: the priced contracts and the known FX
+ *  pairs whose P&L is recorded by hand. */
+export const ALL_KNOWN_SYMBOLS: string[] = [...CORE_SYMBOLS, ...FX_UNPRICED];
 
 /** "NQ (mini)" / "MNQ (micro)" — the size, since that is what moves the money. */
 export function contractLabel(symbol: string): string {

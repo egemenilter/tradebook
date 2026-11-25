@@ -169,6 +169,9 @@ export interface Trade {
   pnl: number;
   /** Signed gross realized points per closed contract; NaN when unavailable. */
   pnlPoints: number;
+  /** Panel draft only: the P&L the trader typed for a pair the journal cannot
+   *  price (quoted outside a dollar). Never written to a note; cleared on save. */
+  recordedPnl?: number;
   /** Order type at entry (Limit, Market, Stop, etc.). Informational — for discipline review. */
   orderType?: string;
   /** Broker fill ID — used for import dedup, not shown in the UI. */

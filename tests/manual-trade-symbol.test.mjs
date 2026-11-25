@@ -20,7 +20,7 @@ const result = await build({
   outdir: "bundle",
   write: false,
 });
-const { CORE_SYMBOLS, supportedDefaultSymbol } = await import(
+const { CORE_SYMBOLS, ALL_KNOWN_SYMBOLS, supportedDefaultSymbol, knownFuturesSpec, unpricedPair } = await import(
   `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`
 );
 
@@ -67,17 +67,51 @@ test("an old or invalid default starts empty instead of falling back to NQ", () 
 // ---- the picker suggests the supported set, and only that ----------------
 
 test("the symbol field is built from the canonical supported set", () => {
-  // D. CORE_SYMBOLS is the one list: the picker reads it, it is not a second
-  // copy of it, and nothing in the panel offers the rest of the registry.
-  assert.match(panel, /for \(const sym of CORE_SYMBOLS\)/, "the datalist is filled from CORE_SYMBOLS");
+  // D. ALL_KNOWN_SYMBOLS is the one list: the picker reads it, it is not a
+  // second copy of it, and nothing in the panel offers the rest of the registry.
+  assert.match(panel, /for \(const sym of ALL_KNOWN_SYMBOLS\)/, "the datalist is filled from ALL_KNOWN_SYMBOLS");
   assert.match(
     panel,
-    /import \{[\s\S]*?CORE_SYMBOLS,[\s\S]*?\} from "\.\.\/futures"/,
-    "CORE_SYMBOLS comes from futures.ts, not a local list"
+    /import \{[\s\S]*?ALL_KNOWN_SYMBOLS,[\s\S]*?\} from "\.\.\/futures"/,
+    "ALL_KNOWN_SYMBOLS comes from futures.ts, not a local list"
   );
   assert.doesNotMatch(panel, /pickerSections/, "the two-section picker is gone");
   assert.doesNotMatch(panel, /Show all instruments|Show the common instruments/, "no 'all instruments' escape hatch");
-  assert.equal(new Set(CORE_SYMBOLS).size, CORE_SYMBOLS.length, "each supported contract is offered once");
+  assert.equal(new Set(ALL_KNOWN_SYMBOLS).size, ALL_KNOWN_SYMBOLS.length, "each supported contract is offered once");
+  // The suggestion list is exactly the priced contracts plus the FX pairs whose
+  // quote is not the dollar — no third kind of symbol, no overlap.
+  assert.deepEqual(
+    [...ALL_KNOWN_SYMBOLS].sort(),
+    [...new Set([...CORE_SYMBOLS, ...ALL_KNOWN_SYMBOLS.filter(unpricedPair)])].sort(),
+    "priced contracts plus recorded-by-hand FX, and nothing else"
+  );
+  for (const symbol of CORE_SYMBOLS) {
+    assert.equal(unpricedPair(symbol), null, `${symbol} is priced, not recorded by hand`);
+  }
+});
+
+test("the FX pairs quoted outside USD are known but priced by nothing", () => {
+  // A cross (EURGBP) or a USD-based pair quoted in another currency (USDJPY,
+  // USDTRY…) makes its money in a floating currency: the journal refuses to
+  // invent a rate, so it names the pair but prices nothing.
+  for (const [symbol, quote] of [
+    ["EURGBP", "British Pound"],
+    ["AUDJPY", "Japanese Yen"],
+    ["USDTRY", "Turkish Lira"],
+    ["USDCAD", "Canadian Dollar"],
+    ["USDCHF", "Swiss Franc"],
+  ]) {
+    assert.equal(knownFuturesSpec(symbol), null, `${symbol} is not silently priced`);
+    assert.equal(supportedDefaultSymbol(symbol), "", `${symbol} is not a default the settings picker offers`);
+    assert.ok(unpricedPair(symbol), `${symbol} is still known — the picker names it`);
+    assert.match(unpricedPair(symbol).name, new RegExp(quote), `${symbol}'s pair names its quote side`);
+    assert.ok(unpricedPair(`${symbol}.p`), "a platform suffix does not break the name");
+  }
+  // The known-but-unpriced pairs are FX and only FX — nothing priced turns
+  // unpriced, and no cross masquerades as a priced contract.
+  for (const symbol of ALL_KNOWN_SYMBOLS.filter(unpricedPair)) {
+    assert.equal(knownFuturesSpec(symbol), null, `${symbol} is recorded by hand, never priced`);
+  }
 });
 
 // ---- an empty symbol waits; it is priced by nothing ----------------------

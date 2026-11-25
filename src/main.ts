@@ -1,5 +1,5 @@
 import { App, Notice, Plugin, PluginManifest, type TAbstractFile, TFile, addIcon, normalizePath, type WorkspaceLeaf } from "obsidian";
-import { AccountRule, DEFAULT_ACCOUNT_RULES, classifyAccount, futuresSpec } from "./futures";
+import { AccountRule, DEFAULT_ACCOUNT_RULES, classifyAccount, knownFuturesSpec } from "./futures";
 import { PropAccount, Trade, Payout, Deposit, FeeAdjustment, AccountType, StrategyRecord } from "./types";
 import { saveTrade, parseTradeFromMarkdown, deleteTradeFile, tradeFilename, tradeMonthPath, setTradeAccount, setTradeFields, updateTradeFields, renameTradeStrategy, updateTradeArrayFields, updateTradeScreenshots } from "./storage";
 import { printFamilySlot, referencesPrintFile, remapPrintReference, remapTradePrintFields } from "./lib/renamePrintReferences";
@@ -2091,7 +2091,10 @@ export default class TradebookPlugin extends Plugin {
 
       for (const t of ordered) {
         if (!t.stopLoss || !t.entryPrice) continue;
-        const spec = futuresSpec(t.symbol);
+        const spec = knownFuturesSpec(t.symbol);
+        // A contract the journal cannot price has no honest dollar risk — the
+        // $1-a-point fallback would invent one, so it sits the metric out.
+        if (!spec) continue;
         const qty = t.quantity && t.quantity > 0 ? t.quantity : 1;
         const risk = Math.abs(t.entryPrice - t.stopLoss) * spec.pointValue * qty;
         if (risk > 0) {

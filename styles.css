@@ -12110,6 +12110,41 @@ button.tj-export-btn--accent { border-color: var(--interactive-accent) !importan
   color: var(--tj-fg-3);
 }
 
+/* Market chips under the symbol field: they narrow the suggestion list only.
+   Small, quiet, and unmistakably not part of the trade itself. */
+.tj-add-symchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.tj-add-symchip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--tj-line, var(--background-modifier-border));
+  background: transparent;
+  color: var(--tj-fg-3);
+  cursor: pointer;
+}
+
+.tj-add-symchip.on {
+  color: var(--tj-fg-1, var(--text-normal));
+  border-color: var(--tj-tone-mid, var(--interactive-accent));
+  background: var(--background-modifier-hover);
+}
+
+/* The recorded money for a pair the journal cannot price: a compact field
+   sitting in the hint row it explains. */
+.tj-add-recorded {
+  margin-top: 5px;
+}
+
+.tj-add-recorded .tj-add-input {
+  max-width: 220px;
+}
+
 /* Actual partial exits are recorded as execution rows, separate from the one
    informational plan target in the folded risk section. */
 .tj-add-exits {

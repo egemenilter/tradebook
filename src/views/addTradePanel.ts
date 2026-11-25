@@ -2,12 +2,13 @@ import { Notice } from "obsidian";
 import type TradebookPlugin from "../main";
 import { Trade } from "../types";
 import {
-  CORE_SYMBOLS,
+  ALL_KNOWN_SYMBOLS,
   contractLabel,
   coreInstrumentOf,
   futuresSpec,
   knownFuturesSpec,
   supportedDefaultSymbol,
+  unpricedPair,
 } from "../futures";
 import { formatDate, mountDateField } from "../lib/dates";
 import { copierPresentation, effectiveCopyConfig, isActiveCopier } from "../lib/copy";
@@ -263,9 +264,10 @@ export class AddTradePanel {
     paintBoundary();
 
     // ---- Symbol ----
-    // The field suggests the contracts the journal supports — the core twelve —
-    // and nothing else. Free text always works: the journal never refuses a
-    // contract, it only says when it cannot price what was typed.
+    // The field suggests every contract and pair the journal knows — priced
+    // ones by the registry, the FX crosses as recorded-by-hand. Free text
+    // always works: the journal never refuses a contract, it only says when
+    // it cannot price what was typed.
     const fSym = field("Symbol");
     const symWrap = fSym.createDiv({ cls: "tj-add-ctl" });
     const listId = `tj-symbol-list-${i}`;
@@ -276,10 +278,44 @@ export class AddTradePanel {
     });
     symInput.value = t.symbol || "";
     const dl = symWrap.createEl("datalist", { attr: { id: listId } });
-    for (const sym of CORE_SYMBOLS) {
-      const spec = futuresSpec(sym);
-      dl.createEl("option", {
-        attr: { value: sym, label: `${contractLabel(sym)} — ${spec.name ?? sym}` },
+    // Market chips: they only narrow the suggestion list — the field itself
+    // never refuses a symbol, and typing beats browsing at this count.
+    let symGroup = "all";
+    const renderSymList = (): void => {
+      dl.empty();
+      for (const sym of ALL_KNOWN_SYMBOLS) {
+        const group = unpricedPair(sym) ? "fx" : futuresSpec(sym).group ?? "other";
+        if (symGroup !== "all" && group !== symGroup) continue;
+        const unpriced = unpricedPair(sym);
+        dl.createEl("option", {
+          attr: {
+            value: sym,
+            label: unpriced
+              ? `${unpriced.name} — quote not USD · P&L recorded by hand`
+              : `${contractLabel(sym)} — ${futuresSpec(sym).name ?? sym}`,
+          },
+        });
+      }
+    };
+    renderSymList();
+    const chipRow = fSym.createDiv({ cls: "tj-add-symchips" });
+    for (const [id, label] of [
+      ["all", "All"],
+      ["fx", "FX"],
+      ["metal", "Metals"],
+      ["equity", "Indices"],
+      ["energy", "Energy"],
+      ["crypto", "Crypto"],
+    ] as Array<[string, string]>) {
+      const chip = chipRow.createEl("button", {
+        cls: "tj-add-symchip" + (id === "all" ? " on" : ""),
+        text: label,
+        attr: { type: "button" },
+      });
+      chip.addEventListener("click", () => {
+        symGroup = id;
+        chipRow.querySelectorAll(".tj-add-symchip").forEach((c) => c.classList.toggle("on", c === chip));
+        renderSymList();
       });
     }
 
@@ -297,6 +333,30 @@ export class AddTradePanel {
       const symNote = symRow.createSpan();
       const instrument = coreInstrumentOf(symbol);
       const perPoint = futuresSpec(symbol).pointValue;
+      const unpriced = unpricedPair(symbol);
+      if (unpriced) {
+        // A pair quoted outside the dollar makes its money in another currency,
+        // and its dollar value floats — the journal refuses to invent a rate.
+        // The exact number lives on the platform, so the trade carries it.
+        symNote.createEl("b", { text: `${unpriced.name} — quoted outside USD. ` });
+        symNote.createSpan({
+          text: "The journal cannot price it exactly; type the P&L the platform reported.",
+        });
+        const moneyRow = symRow.createDiv({ cls: "tj-add-recorded" });
+        const moneyInput = moneyRow.createEl("input", {
+          cls: "tj-add-input",
+          type: "text",
+          attr: { placeholder: "Recorded P&L ($)", spellcheck: "false", autocomplete: "off", inputmode: "decimal" },
+        });
+        if (Number.isFinite(t.recordedPnl)) moneyInput.value = String(t.recordedPnl);
+        moneyInput.addEventListener("input", () => {
+          const value = Number.parseFloat(moneyInput.value);
+          if (Number.isFinite(value)) t.recordedPnl = value;
+          else delete t.recordedPnl;
+          paint();
+        });
+        return;
+      }
       if (knownFuturesSpec(symbol) === null) {
         symNote.createEl("b", { text: "Not a contract this journal prices. " });
         symNote.createSpan({
@@ -607,9 +667,15 @@ export class AddTradePanel {
         const pts = t.direction === "long" ? weightedExit - t.entryPrice : t.entryPrice - weightedExit;
         // pnl is the GROSS: points × pointValue × qty. Commission and fees stay
         // in their own fields; the net is derived for the strip's last cell. With
-        // no priced contract there is no point value to multiply by, so the
-        // money waits — the points below are price distance and stand on their own.
-        t.pnl = pointValue === null ? Number.NaN : Math.round(pts * pointValue * qty * 100) / 100;
+        // no priced contract there is no point value to multiply by — for a pair
+        // quoted outside USD the trader records the platform's own P&L instead,
+        // and that typed money is the number the strip shows.
+        t.pnl =
+          pointValue === null
+            ? Number.isFinite(t.recordedPnl)
+              ? (t.recordedPnl as number)
+              : Number.NaN
+            : Math.round(pts * pointValue * qty * 100) / 100;
         // Points are price distance — the quantity never multiplies them.
         t.pnlPoints = Math.round(pts * 100) / 100;
       } else {
@@ -1156,6 +1222,11 @@ export class AddTradePanel {
           return;
         }
         Object.assign(t, built.trade);
+        // A multi-exit trade on a pair the journal cannot price: the per-fill
+        // money cannot be split honestly, so the recorded total stands alone.
+        if (!knownFuturesSpec(t.symbol) && Number.isFinite(t.recordedPnl) && !Number.isFinite(t.pnl)) {
+          t.pnl = t.recordedPnl as number;
+        }
       } else {
         const exit = exits[0];
         t.exitPrice = exit.price;
@@ -1165,7 +1236,13 @@ export class AddTradePanel {
         const spec = knownFuturesSpec(t.symbol);
         const points = t.direction === "long" ? t.exitPrice - t.entryPrice : t.entryPrice - t.exitPrice;
         // pnl is the GROSS; commission and fees are recorded in their own fields.
-        t.pnl = spec ? Math.round(points * spec.pointValue * t.quantity * 100) / 100 : Number.NaN;
+        // A pair the journal cannot price (quoted outside USD) carries the P&L
+        // the trader recorded from the platform instead of a computed one.
+        t.pnl = spec
+          ? Math.round(points * spec.pointValue * t.quantity * 100) / 100
+          : Number.isFinite(t.recordedPnl)
+            ? (t.recordedPnl as number)
+            : Number.NaN;
         // Points are price distance — the quantity never multiplies them.
         t.pnlPoints = Math.round(points * 100) / 100;
       }
@@ -1202,6 +1279,8 @@ export class AddTradePanel {
         return;
       }
       new Notice(count === 1 ? "1 trade saved." : `${count} trades saved.`);
+      // The drafts are written; a typed recorded P&L belongs to the note now.
+      for (const trade of this.manualTrades) delete trade.recordedPnl;
       this.onSaveDone?.();
     } catch (err) {
       console.error("[tradebook] manual trade not saved:", err);
