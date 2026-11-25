@@ -260,15 +260,22 @@ function multiLineChart(
       area.setAttribute("stroke", "none");
       svg.appendChild(area);
     }
-    const line = document.createElementNS(svgNS, "path");
-    line.setAttribute("d", lineD);
-    line.setAttribute("class", "tj-strat-chart-line");
-    line.setAttribute("style", `stroke: ${color}`);
-    line.setAttribute("vector-effect", "non-scaling-stroke");
-    // A stroked path also FILLS its own outline (start-to-end chord closed)
-    // unless fill is explicitly none — that chord fill was the black wedge.
-    line.setAttribute("fill", "none");
-    svg.appendChild(line);
+    // The stroke itself splits at the zero line: the same path drawn twice,
+    // the part above zero green, below it red — the curve never carries one
+    // trade's result across a crossing it did not make.
+    for (const [stroke, clip] of [
+      [toneGood, `url(#tjclipA${chartSeq})`],
+      [toneBad, `url(#tjclipB${chartSeq})`],
+    ] as Array<[string, string]>) {
+      const seg = document.createElementNS(svgNS, "path");
+      seg.setAttribute("d", lineD);
+      seg.setAttribute("class", "tj-strat-chart-line");
+      seg.setAttribute("style", `stroke: ${stroke}`);
+      seg.setAttribute("vector-effect", "non-scaling-stroke");
+      seg.setAttribute("fill", "none");
+      seg.setAttribute("clip-path", clip);
+      svg.appendChild(seg);
+    }
     // One hover band per trade: names its day and the running total on hover,
     // and a band never distorts the way a stretched dot would.
     pts.forEach((p, j) => {
