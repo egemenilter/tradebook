@@ -1335,14 +1335,23 @@ export default class TradebookPlugin extends Plugin {
     }
   }
 
-  /** Open an image the way Obsidian shows any vault media — a real preview. */
+  /** Open an image the way Obsidian shows any vault media — a real preview.
+   *  Two paths, so a leaf that refuses still lands somewhere visible. */
   async openMediaPreview(path: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) return;
+    if (!(file instanceof TFile)) {
+      new Notice("The screenshot's file is not in the vault.");
+      return;
+    }
     try {
       await this.app.workspace.getLeaf("tab").openFile(file);
-    } catch (err) {
-      console.error("[tradebook] could not open the preview", err);
+    } catch {
+      try {
+        await this.app.workspace.openLinkText(path, "", false);
+      } catch (err) {
+        console.error("[tradebook] could not open the preview", err);
+        new Notice("Could not open the preview.");
+      }
     }
   }
 

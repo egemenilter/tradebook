@@ -13969,7 +13969,7 @@ justify-content: space-between;
 /* Below the big chart: rules on the left, the trade shapes on the right. */
 .tj-strat-detail-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.6fr 1fr;
   gap: var(--tj-sp-3);
   align-items: start;
   margin-bottom: var(--tj-sp-3);

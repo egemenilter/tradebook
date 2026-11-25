@@ -982,8 +982,11 @@ export class SetupsView extends ItemView {
     stat("Avg R", g.n ? fmtAvgR(g.rSum, g.rN) : "—", g.rN ? toneClass(g.rSum / (g.rN || 1)) : "");
     stat("Missed", g.missedN ? `${g.missedN} · ${fmtMoney(g.missedPnl)}` : "0", g.missedN ? "is-hypothetical" : "");
 
-    // ---- Cumulative chart, in dollars or in R ----
-    const chartCard = main.createDiv({ cls: "tj-strat-card tj-strat-chartcard" });
+    // ---- The chart in a wide column, the trade shapes stacked beside it ----
+    const midGrid = main.createDiv({ cls: "tj-strat-detail-grid" });
+    const chartCol = midGrid.createDiv({ cls: "tj-strat-detail-col is-wide" });
+    const sideCol = midGrid.createDiv({ cls: "tj-strat-detail-col" });
+    const chartCard = chartCol.createDiv({ cls: "tj-strat-card tj-strat-chartcard" });
     const chartHead = chartCard.createDiv({ cls: "tj-strat-card-head" });
     chartHead.createDiv({ cls: "tj-strat-card-title", text: "Cumulative" });
     const modeSeg = chartHead.createDiv({ cls: "tj-strat-chart-toggle" });
@@ -1016,7 +1019,7 @@ export class SetupsView extends ItemView {
 
     // ---- Outcomes: one bar per trade, tallest = biggest move ----
     if (g.series.length) {
-      const ocCard = main.createDiv({ cls: "tj-strat-card" });
+      const ocCard = sideCol.createDiv({ cls: "tj-strat-card" });
       ocCard.createDiv({ cls: "tj-strat-card-title", text: "Outcomes" });
       ocCard.createDiv({
         cls: "tj-strat-outcome-cap",
@@ -1042,7 +1045,7 @@ export class SetupsView extends ItemView {
       syms.set(k, s);
     }
     if (syms.size > 1) {
-      const symCard = main.createDiv({ cls: "tj-strat-card" });
+      const symCard = sideCol.createDiv({ cls: "tj-strat-card" });
       symCard.createDiv({ cls: "tj-strat-card-title", text: "By symbol" });
       const rowsEl = symCard.createDiv({ cls: "tj-strat-symbols" });
       const symMax = Math.max(...[...syms.values()].map((s) => Math.abs(s.net)), 1);
@@ -1056,10 +1059,10 @@ export class SetupsView extends ItemView {
       }
     }
 
-    // ---- Rules ----
+    // ---- Rules (under the chart, where the eye lands after it) ----
     // The editor shows only what the trader wrote: the note's own heading and
     // intro line stay in the file and are rebuilt on save.
-    const rulesCard = main.createDiv({ cls: "tj-strat-card tj-strat-rulescard" });
+    const rulesCard = chartCol.createDiv({ cls: "tj-strat-card tj-strat-rulescard" });
     const rulesHead = rulesCard.createDiv({ cls: "tj-strat-card-head" });
     rulesHead.createDiv({ cls: "tj-strat-card-title", text: "Rules" });
     const bodyText = await this.plugin.readStrategyNoteBody(name);
@@ -1113,7 +1116,7 @@ export class SetupsView extends ItemView {
 
     // ---- Recent trades ----
     if (g.series.length) {
-      const recentCard = main.createDiv({ cls: "tj-strat-card" });
+      const recentCard = sideCol.createDiv({ cls: "tj-strat-card" });
       recentCard.createDiv({ cls: "tj-strat-card-title", text: "Recent trades" });
       const recent = recentCard.createDiv({ cls: "tj-strat-recent tj-strat-recent-page" });
       for (const t of [...g.series].reverse().slice(0, 8)) {
@@ -1130,9 +1133,8 @@ export class SetupsView extends ItemView {
     }
 
     // ---- Linked notes and prints, kept on the strategy note's frontmatter ----
-    const metaGrid = main.createDiv({ cls: "tj-strat-detail-grid" });
-    await this.renderLinkedNotes(metaGrid, name);
-    await this.renderPrints(metaGrid, name);
+    await this.renderLinkedNotes(sideCol, name);
+    await this.renderPrints(sideCol, name);
   }
 
   /** The searchable note picker the link button opens — every markdown file
