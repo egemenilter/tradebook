@@ -13966,12 +13966,14 @@ justify-content: space-between;
   margin: -4px 0 8px;
 }
 
-/* Below the big chart: rules on the left, the trade shapes on the right. */
+/* Below the big chart: rules on the left, the trade shapes on the right.
+   The columns stretch to each other, and the wide side's cards share the
+   extra height so no dead gap is left under the chart. */
 .tj-strat-detail-grid {
   display: grid;
   grid-template-columns: 1.6fr 1fr;
   gap: var(--tj-sp-3);
-  align-items: start;
+  align-items: stretch;
   margin-bottom: var(--tj-sp-3);
 }
 
@@ -13980,6 +13982,34 @@ justify-content: space-between;
   flex-direction: column;
   gap: var(--tj-sp-3);
   min-width: 0;
+}
+
+.tj-strat-detail-col .tj-strat-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.tj-strat-detail-col .tj-strat-chartcard,
+.tj-strat-detail-col .tj-strat-rulescard {
+  flex: 1 1 auto;
+}
+
+.tj-strat-detail-col .tj-strat-rules-body {
+  flex: 1;
+}
+
+.tj-strat-detail-col .tj-strat-rulescard .tj-strat-rules-text,
+.tj-strat-detail-col .tj-strat-rulescard .tj-strat-rules-empty {
+  white-space: pre-wrap;
+}
+
+.tj-strat-detail-col .tj-strat-chartbox {
+  flex: 1;
+}
+
+.tj-strat-detail-col .tj-strat-chart {
+  height: 100%;
+  min-height: 320px;
 }
 
 @media (max-width: 720px) {
@@ -14073,6 +14103,50 @@ justify-content: space-between;
   gap: 4px;
   margin-left: 10px;
   vertical-align: middle;
+}
+
+/* The chosen lifecycle wears its colour, so the selection reads at a glance. */
+.tj-strat-status-seg .tj-add-seg-btn {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.tj-strat-status-seg .tj-strat-status-active.on {
+  color: var(--tj-tone-good, #34d17a);
+  border-color: color-mix(in srgb, var(--tj-tone-good, #34d17a) 55%, transparent);
+  background: color-mix(in srgb, var(--tj-tone-good, #34d17a) 14%, transparent);
+}
+
+.tj-strat-status-seg .tj-strat-status-testing.on {
+  color: var(--tj-tone-mid, #d9a441);
+  border-color: color-mix(in srgb, var(--tj-tone-mid, #d9a441) 55%, transparent);
+  background: color-mix(in srgb, var(--tj-tone-mid, #d9a441) 14%, transparent);
+}
+
+.tj-strat-status-seg .tj-strat-status-archived.on {
+  color: var(--tj-fg-3, #8a9099);
+  border-color: color-mix(in srgb, var(--tj-fg-3, #8a9099) 55%, transparent);
+  background: color-mix(in srgb, var(--tj-fg-3, #8a9099) 12%, transparent);
+}
+
+/* Journalit's fullscreen media preview: the print over everything. */
+.tj-strat-media-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(10, 10, 12, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.tj-strat-media-overlay img {
+  max-width: 94vw;
+  max-height: 90vh;
+  border-radius: 6px;
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
 }
 
 .tj-strat-detail-head .tj-strat-item-actions {

@@ -938,7 +938,7 @@ export class SetupsView extends ItemView {
       ["archived", "Archived"],
     ] as const) {
       statusSeg.createEl("button", {
-        cls: "tj-add-seg-btn" + (status === id ? " on" : ""),
+        cls: `tj-add-seg-btn tj-strat-status-${id}` + (status === id ? " on" : ""),
         text: label,
         attr: { type: "button" },
       }).addEventListener("click", () => {
@@ -1012,6 +1012,7 @@ export class SetupsView extends ItemView {
       value: valueOf,
       fmt: fmtOf,
       axisFmt: this.chartMode === "r" ? fmtOf : fmtMoneyCompact,
+      cssHeight: 320,
     });
     if (this.chartMode === "r") {
       chartEl.setAttr("title", "Cumulative R — trades without a recorded stop cannot sit on an R curve, so they are left out.");
@@ -1275,7 +1276,22 @@ export class SetupsView extends ItemView {
       const cell = grid.createDiv({ cls: "tj-strat-print" });
       const img = cell.createEl("img", { attr: { src: this.plugin.app.vault.getResourcePath(file), alt: path } });
       img.style.cursor = "zoom-in";
-      img.addEventListener("click", () => void this.plugin.openMediaPreview(path));
+      // Journalit's fullscreen media preview: the print grows over the page,
+      // one click or Escape puts it back.
+      img.addEventListener("click", () => {
+        document.querySelectorAll(".tj-strat-media-overlay").forEach((n) => n.remove());
+        const overlay = document.body.createDiv({ cls: "tj-strat-media-overlay" });
+        overlay.createEl("img", { attr: { src: this.plugin.app.vault.getResourcePath(file), alt: path } });
+        const close = (): void => {
+          overlay.remove();
+          document.removeEventListener("keydown", onKey);
+        };
+        const onKey = (e: KeyboardEvent): void => {
+          if (e.key === "Escape") close();
+        };
+        overlay.addEventListener("click", close);
+        document.addEventListener("keydown", onKey);
+      });
       const x = cell.createEl("button", { cls: "tj-strat-print-x", text: "✕", attr: { type: "button", title: "Remove from the list (the file stays in the vault)" } });
       x.addEventListener("click", () => {
         void (async () => {
