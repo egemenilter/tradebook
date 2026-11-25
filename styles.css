@@ -14247,10 +14247,76 @@ justify-content: space-between;
   width: 100%;
 }
 
-/* Prints: a thumbnail grid with a remove cross on each. */
+/* Linked notes + screenshots: one quiet block — counted labels, plain rows. */
+.tj-strat-notes {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+.tj-strat-notes-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tj-fg-3, #8a9099);
+  margin-bottom: 6px;
+}
+
+.tj-strat-notes-plus {
+  border: none;
+  background: transparent;
+  color: var(--tj-fg-2, #a8aeb4);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.tj-strat-notes-plus:hover {
+  color: var(--text-normal);
+}
+
+.tj-strat-notes-empty {
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-3, #8a9099);
+  padding: 2px 0 4px;
+}
+
+.tj-strat-notes-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-2, #a8aeb4);
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.tj-strat-notes-row:hover {
+  color: var(--text-normal);
+}
+
+.tj-strat-notes-row .tj-strat-linked-x {
+  opacity: 0;
+}
+
+.tj-strat-notes-row:hover .tj-strat-linked-x {
+  opacity: 1;
+}
+
+.tj-strat-notes-divider {
+  border-top: 1px solid var(--background-modifier-border);
+  margin: 12px 0;
+}
+
 .tj-strat-prints {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 6px;
 }
 
@@ -14263,7 +14329,7 @@ justify-content: space-between;
 
 .tj-strat-print img {
   width: 100%;
-  height: 84px;
+  height: 64px;
   object-fit: cover;
   display: block;
 }
