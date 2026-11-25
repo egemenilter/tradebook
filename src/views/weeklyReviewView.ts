@@ -2,14 +2,15 @@
  * The weekly review page — the Journalit experience in the fork's own frame.
  *
  * The note is the storage (plain markdown, readable anywhere); this page is
- * how the trader works with it: the forecast written on Sunday, the checklist
- * kept honest through the week, and on Friday the week's own performance
- * rendered live — charts are computed from the record, never pasted.
+ * how the trader works with it: the checklist and forecast written on Sunday,
+ * the checklist kept honest through the week, and on Friday the week's own
+ * performance rendered live — charts are computed from the record, never
+ * pasted.
  */
 import { ItemView, Notice, TFile, type WorkspaceLeaf } from "obsidian";
 import type TradebookPlugin from "../main";
 import { renderAppShell } from "../ui";
-import { fmtMoney, fmtMoney2 } from "../tz";
+import { fmtMoney2 } from "../tz";
 import { toneClass } from "../lib/fills";
 import { netPnl } from "../lib/fees";
 import { tradeR } from "../lib/tradeTable";
@@ -111,47 +112,17 @@ export class WeeklyReviewView extends ItemView {
     );
     const sorted = [...trades].sort((a, b) => `${a.date} ${a.entryTime}`.localeCompare(`${b.date} ${b.entryTime}`));
 
-    const grid = main.createDiv({ cls: "tj-weekly-grid" });
-    const leftCol = grid.createDiv({ cls: "tj-strat-detail-col is-wide" });
-    const rightCol = grid.createDiv({ cls: "tj-strat-detail-col" });
+    // One column, the trader's reading order. Full-width cards.
+    const stack = main.createDiv({ cls: "tj-weekly-stack" });
 
-    // ---- Forecast — written on Sunday, before the week runs ----
-    const forecastCard = leftCol.createDiv({ cls: "tj-strat-card" });
-    forecastCard.createDiv({ cls: "tj-strat-card-title", text: "Forecast" });
-    forecastCard.createDiv({
-      cls: "tj-weekly-hint",
-      text: "Written before the week runs: bias, key events, the trades you are hunting.",
-    });
-    const forecastTa = forecastCard.createEl("textarea", { cls: "tj-strat-rules-input tj-weekly-ta" });
-    forecastTa.value = readSection(body, "Forecast");
-    forecastTa.placeholder = "Sunday's plan goes here…";
-    this.wireSectionSave(forecastTa, "Forecast");
-
-    // ---- Review — written on Friday, with the week closed ----
-    const reviewCard = leftCol.createDiv({ cls: "tj-strat-card" });
-    reviewCard.createDiv({ cls: "tj-strat-card-title", text: "Review" });
-    reviewCard.createDiv({
-      cls: "tj-weekly-hint",
-      text: "The five questions, answered with the week closed.",
-    });
-    const reviewTa = reviewCard.createEl("textarea", { cls: "tj-strat-rules-input tj-weekly-ta" });
-    reviewTa.value = readSection(body, "Review");
-    if (!reviewTa.value.trim()) {
-      reviewTa.value = "### What worked\n\n\n### What didn't\n\n\n### Most profitable setups\n\n\n### Costly mistakes\n";
-    }
-    this.wireSectionSave(reviewTa, "Review");
-
-    // ---- Checklist — live through the week ----
-    const checklistCard = rightCol.createDiv({ cls: "tj-strat-card" });
+    // ---- 1. Checklist — live through the week ----
+    const checklistCard = stack.createDiv({ cls: "tj-strat-card" });
     checklistCard.createDiv({ cls: "tj-strat-card-title", text: "Checklist" });
-    const checklist = parseChecklist(body);
+    const checklist = parseChecklist(body).filter((i) => i.text);
     const list = checklistCard.createDiv({ cls: "tj-weekly-checklist" });
     const saveChecklist = (): void => {
       void (async () => {
-        const fresh = await this.plugin.app.vault.cachedRead(file);
         await this.plugin.app.vault.process(file, (content) => writeChecklist(content, checklist));
-        this._touched();
-        void fresh;
       })();
     };
     if (!checklist.length) {
@@ -174,97 +145,19 @@ export class WeeklyReviewView extends ItemView {
       });
     });
     const addRow = list.createDiv({ cls: "tj-weekly-check-add" });
-    const addInput = addRow.createEl("input", { type: "text", cls: "tj-add-input", attr: { placeholder: "Add an item…" } });
+    const addInput = addRow.createEl("input", { type: "text", cls: "tj-add-input", attr: { placeholder: "Add a new checklist item…" } });
     addInput.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       const text = addInput.value.trim();
       if (!text) return;
       checklist.push({ text, done: false });
       addInput.value = "";
-      const row = list.createDiv({ cls: "tj-weekly-check" });
-      const box = row.createEl("input", { type: "checkbox" });
-      const label = row.createSpan({ cls: "tj-weekly-check-label", text });
-      box.addEventListener("change", () => {
-        checklist[checklist.length - 1].done = box.checked;
-        saveChecklist();
-      });
-      label.addEventListener("click", () => {
-        checklist[checklist.length - 1].done = !checklist[checklist.length - 1].done;
-        box.checked = checklist[checklist.length - 1].done;
-        label.toggleClass("is-done", checklist[checklist.length - 1].done);
-        saveChecklist();
-      });
       saveChecklist();
+      void this.render();
     });
 
-    // ---- Performance — live from the record, never pasted ----
-    const perfCard = rightCol.createDiv({ cls: "tj-strat-card" });
-    perfCard.createDiv({ cls: "tj-strat-card-title", text: "Performance" });
-    const net = trades.reduce((s, t) => s + netPnl(t), 0);
-    const wins = trades.filter((t) => netPnl(t) > 0).length;
-    const grossWin = trades.reduce((s, t) => s + (netPnl(t) > 0 ? netPnl(t) : 0), 0);
-    const grossLoss = trades.reduce((s, t) => s + (netPnl(t) < 0 ? -netPnl(t) : 0), 0);
-    const rRows = trades.map((t) => tradeR(t)).filter((r): r is number => r !== null);
-    const strip = perfCard.createDiv({ cls: "tj-weekly-perf" });
-    const stat = (label: string, value: string, cls = ""): void => {
-      const cell = strip.createDiv({ cls: "tj-weekly-perf-cell" });
-      cell.createDiv({ cls: "tj-strat-stat-l", text: label });
-      cell.createDiv({ cls: `tj-strat-stat-v ${cls}`.trim(), text: value });
-    };
-    stat("Net", trades.length ? fmtMoney2(net) : "—", trades.length ? toneClass(net) : "");
-    stat("Trades", String(trades.length));
-    stat("Win rate", trades.length ? `${Math.round((wins / trades.length) * 100)}%` : "—");
-    stat("Profit factor", grossLoss > 0 ? (grossWin / grossLoss).toFixed(2) : "—", grossLoss > 0 ? (grossWin >= grossLoss ? "tj-pos" : "tj-neg") : "");
-    stat("Avg R", rRows.length ? `${rRows.reduce((a, b) => a + b, 0) / rRows.length >= 0 ? "+" : ""}${(rRows.reduce((a, b) => a + b, 0) / rRows.length).toFixed(2)}R` : "—");
-
-    // Cumulative net across the seven days — flat days carry the line on.
-    let cum = 0;
-    const values: number[] = [];
-    for (const d of weekDays(week)) {
-      cum += trades.filter((t) => t.date === d).reduce((s, t) => s + netPnl(t), 0);
-      values.push(Math.round(cum * 100) / 100);
-    }
-    const chartBox = perfCard.createDiv({ cls: "tj-weekly-chart" });
-    chartBox.style.height = "150px";
-    if (trades.length) {
-      renderLineChart(chartBox, { values, dates: weekDays(week), key: `week-${this.weekKey}`, compact: true });
-    } else {
-      chartBox.createDiv({ cls: "tj-weekly-hint", text: "No trades this week — the chart waits for the record." });
-    }
-
-    // By symbol + the two trades that made the week
-    const symbols = new Map<string, { n: number; net: number }>();
-    for (const t of trades) {
-      const k = (t.symbol || "").toUpperCase() || "—";
-      const s = symbols.get(k) ?? { n: 0, net: 0 };
-      s.n += 1;
-      s.net += netPnl(t);
-      symbols.set(k, s);
-    }
-    if (symbols.size > 1) {
-      const symLine = perfCard.createDiv({ cls: "tj-weekly-context" });
-      symLine.createSpan({
-        text: [...symbols.entries()].sort((a, b) => b[1].net - a[1].net).map(([k, s]) => `${k} ${s.n}×${fmtMoney2(s.net)}`).join(" · "),
-      });
-    }
-    const byTrade = [...sorted].sort((a, b) => netPnl(b) - netPnl(a));
-    if (byTrade.length) {
-      const extremes = perfCard.createDiv({ cls: "tj-weekly-extremes" });
-      const best = byTrade[0];
-      const worst = byTrade[byTrade.length - 1];
-      for (const [t, tag] of [[best, "Best trade"], [worst, "Worst trade"]] as Array<[typeof best, string]>) {
-        const row = extremes.createDiv({ cls: "tj-weekly-extreme" });
-        row.createSpan({ text: tag });
-        row.createSpan({ text: `${t.symbol} · ${t.date.slice(5)}` });
-        const v = row.createSpan({ cls: toneClass(netPnl(t)) });
-        v.setText(fmtMoney2(netPnl(t)));
-        row.setAttr("title", "Open the trade");
-        row.addEventListener("click", () => void this.plugin.openTradeDetail({ id: t.id }));
-      }
-    }
-
-    // ---- Key events — the news the week traded around ----
-    const eventsCard = rightCol.createDiv({ cls: "tj-strat-card" });
+    // ---- 2. Key events — the news the week traded around ----
+    const eventsCard = stack.createDiv({ cls: "tj-strat-card" });
     eventsCard.createDiv({ cls: "tj-strat-card-title", text: "Key events" });
     const eventLines = readSection(body, "Key events").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const saveEvents = (): void =>
@@ -295,28 +188,9 @@ export class WeeklyReviewView extends ItemView {
       void this.render();
     });
 
-    // ---- The week's trades, one row each, oldest first ----
-    const tradesCard = main.createDiv({ cls: "tj-strat-card" });
-    tradesCard.createDiv({ cls: "tj-strat-card-title", text: `Trades (${trades.length})` });
-    if (!sorted.length) {
-      tradesCard.createDiv({ cls: "tj-weekly-hint", text: "No trades this week." });
-    }
-    const tradeList = tradesCard.createDiv({ cls: "tj-strat-recent tj-weekly-trades" });
-    for (const t of sorted) {
-      const rowEl = tradeList.createDiv({ cls: "tj-strat-recent-row" });
-      rowEl.createSpan({ cls: "tj-strat-recent-date", text: t.date.slice(5) });
-      rowEl.createSpan({ cls: "tj-strat-recent-sym", text: `${t.symbol} ${t.direction === "long" ? "▲" : "▼"}` });
-      const r = tradeR(t);
-      if (r !== null) rowEl.createSpan({ cls: "tj-strat-recent-r", text: `${r >= 0 ? "+" : ""}${r.toFixed(2)}R` });
-      const p = rowEl.createSpan({ cls: "tj-strat-recent-pnl " + toneClass(netPnl(t)) });
-      p.setText(fmtMoney2(netPnl(t)));
-      rowEl.setAttr("title", "Open the trade");
-      rowEl.addEventListener("click", () => void this.plugin.openTradeDetail({ id: t.id }));
-    }
-
-    // ---- Forecast vs Review screenshots, side by side ----
+    // ---- 3. Screenshots — forecast against review, side by side ----
     const meta = await this.plugin.readWeeklyMeta(this.weekKey);
-    const shotsCard = main.createDiv({ cls: "tj-strat-card" });
+    const shotsCard = stack.createDiv({ cls: "tj-strat-card" });
     shotsCard.createDiv({ cls: "tj-strat-card-title", text: "Screenshots" });
     const shotsGrid = shotsCard.createDiv({ cls: "tj-weekly-shots" });
     for (const [kind, label] of [["forecast", "Forecast"], ["review", "Review"]] as const) {
@@ -358,6 +232,120 @@ export class WeeklyReviewView extends ItemView {
         });
       }
     }
+
+    // ---- 4. Forecast — written on Sunday, before the week runs ----
+    const forecastCard = stack.createDiv({ cls: "tj-strat-card" });
+    forecastCard.createDiv({ cls: "tj-strat-card-title", text: "Forecast" });
+    forecastCard.createDiv({
+      cls: "tj-weekly-hint",
+      text: "Written before the week runs: bias, key levels, the trades you are hunting.",
+    });
+    const forecastTa = forecastCard.createEl("textarea", { cls: "tj-strat-rules-input tj-weekly-ta" });
+    forecastTa.value = readSection(body, "Forecast");
+    forecastTa.placeholder = "Sunday's plan goes here…";
+    this.wireSectionSave(forecastTa, "Forecast");
+
+    // ---- 5. Review — written on Friday, with the week closed ----
+    const reviewCard = stack.createDiv({ cls: "tj-strat-card" });
+    reviewCard.createDiv({ cls: "tj-strat-card-title", text: "Review" });
+    reviewCard.createDiv({
+      cls: "tj-weekly-hint",
+      text: "The five questions, answered with the week closed.",
+    });
+    const reviewTa = reviewCard.createEl("textarea", { cls: "tj-strat-rules-input tj-weekly-ta" });
+    reviewTa.value = readSection(body, "Review");
+    if (!reviewTa.value.trim()) {
+      reviewTa.value = "### What worked\n\n\n### What didn't\n\n\n### Most profitable setups\n\n\n### Costly mistakes\n";
+    }
+    this.wireSectionSave(reviewTa, "Review");
+
+    // ---- 6. Performance and Trades, side by side ----
+    const duo = stack.createDiv({ cls: "tj-weekly-duo" });
+    const perfCard = duo.createDiv({ cls: "tj-strat-card" });
+    const tradesCard = duo.createDiv({ cls: "tj-strat-card" });
+
+    // Performance — live from the record, never pasted.
+    perfCard.createDiv({ cls: "tj-strat-card-title", text: "Performance" });
+    const net = trades.reduce((s, t) => s + netPnl(t), 0);
+    const wins = trades.filter((t) => netPnl(t) > 0).length;
+    const grossWin = trades.reduce((s, t) => s + (netPnl(t) > 0 ? netPnl(t) : 0), 0);
+    const grossLoss = trades.reduce((s, t) => s + (netPnl(t) < 0 ? -netPnl(t) : 0), 0);
+    const rRows = trades.map((t) => tradeR(t)).filter((r): r is number => r !== null);
+    const strip = perfCard.createDiv({ cls: "tj-weekly-perf" });
+    const stat = (label: string, value: string, cls = ""): void => {
+      const cell = strip.createDiv({ cls: "tj-weekly-perf-cell" });
+      cell.createDiv({ cls: "tj-strat-stat-l", text: label });
+      cell.createDiv({ cls: `tj-strat-stat-v ${cls}`.trim(), text: value });
+    };
+    stat("Net", trades.length ? fmtMoney2(net) : "—", trades.length ? toneClass(net) : "");
+    stat("Trades", String(trades.length));
+    stat("Win rate", trades.length ? `${Math.round((wins / trades.length) * 100)}%` : "—");
+    stat("Profit factor", grossLoss > 0 ? (grossWin / grossLoss).toFixed(2) : "—", grossLoss > 0 ? (grossWin >= grossLoss ? "tj-pos" : "tj-neg") : "");
+    stat("Avg R", rRows.length ? `${rRows.reduce((a, b) => a + b, 0) / rRows.length >= 0 ? "+" : ""}${(rRows.reduce((a, b) => a + b, 0) / rRows.length).toFixed(2)}R` : "—");
+
+    // Cumulative net across the seven days — flat days carry the line on.
+    let cum = 0;
+    const values: number[] = [];
+    for (const d of weekDays(week)) {
+      cum += trades.filter((t) => t.date === d).reduce((s, t) => s + netPnl(t), 0);
+      values.push(Math.round(cum * 100) / 100);
+    }
+    const chartBox = perfCard.createDiv({ cls: "tj-weekly-chart" });
+    chartBox.style.height = "150px";
+    if (trades.length) {
+      renderLineChart(chartBox, { values, dates: weekDays(week), key: `week-${this.weekKey}`, compact: true });
+    } else {
+      chartBox.createDiv({ cls: "tj-weekly-hint", text: "No trades this week — the chart waits for the record." });
+    }
+
+    // By symbol + the two trades that made the week.
+    const symbols = new Map<string, { n: number; net: number }>();
+    for (const t of trades) {
+      const k = (t.symbol || "").toUpperCase() || "—";
+      const s = symbols.get(k) ?? { n: 0, net: 0 };
+      s.n += 1;
+      s.net += netPnl(t);
+      symbols.set(k, s);
+    }
+    if (symbols.size) {
+      const symLine = perfCard.createDiv({ cls: "tj-weekly-context" });
+      symLine.createSpan({
+        text: [...symbols.entries()].sort((a, b) => b[1].net - a[1].net).map(([k, s]) => `${k} ${s.n}×${fmtMoney2(s.net)}`).join(" · "),
+      });
+    }
+    const byTrade = [...sorted].sort((a, b) => netPnl(b) - netPnl(a));
+    if (byTrade.length) {
+      const extremes = perfCard.createDiv({ cls: "tj-weekly-extremes" });
+      const best = byTrade[0];
+      const worst = byTrade[byTrade.length - 1];
+      for (const [t, tag] of [[best, "Best trade"], [worst, "Worst trade"]] as Array<[typeof best, string]>) {
+        const row = extremes.createDiv({ cls: "tj-weekly-extreme" });
+        row.createSpan({ text: tag });
+        row.createSpan({ text: `${t.symbol} · ${t.date.slice(5)}` });
+        const v = row.createSpan({ cls: toneClass(netPnl(t)) });
+        v.setText(fmtMoney2(netPnl(t)));
+        row.setAttr("title", "Open the trade");
+        row.addEventListener("click", () => void this.plugin.openTradeDetail({ id: t.id }));
+      }
+    }
+
+    // Trades — one row each, oldest first.
+    tradesCard.createDiv({ cls: "tj-strat-card-title", text: `Trades (${trades.length})` });
+    if (!sorted.length) {
+      tradesCard.createDiv({ cls: "tj-weekly-hint", text: "No trades this week." });
+    }
+    const tradeList = tradesCard.createDiv({ cls: "tj-strat-recent tj-weekly-trades" });
+    for (const t of sorted) {
+      const rowEl = tradeList.createDiv({ cls: "tj-strat-recent-row" });
+      rowEl.createSpan({ cls: "tj-strat-recent-date", text: t.date.slice(5) });
+      rowEl.createSpan({ cls: "tj-strat-recent-sym", text: `${t.symbol} ${t.direction === "long" ? "▲" : "▼"}` });
+      const r = tradeR(t);
+      if (r !== null) rowEl.createSpan({ cls: "tj-strat-recent-r", text: `${r >= 0 ? "+" : ""}${r.toFixed(2)}R` });
+      const p = rowEl.createSpan({ cls: "tj-strat-recent-pnl " + toneClass(netPnl(t)) });
+      p.setText(fmtMoney2(netPnl(t)));
+      rowEl.setAttr("title", "Open the trade");
+      rowEl.addEventListener("click", () => void this.plugin.openTradeDetail({ id: t.id }));
+    }
   }
 
   /** The fullscreen media preview — the print over everything, Esc to leave. */
@@ -389,11 +377,6 @@ export class WeeklyReviewView extends ItemView {
         })();
       }, 600);
     });
-  }
-
-  /** The page was written by hand; the vault watcher should not double-paint. */
-  private _touched(): void {
-    // Reserved: the reload guard reads a timestamp the trade detail keeps.
   }
 
   async onClose(): Promise<void> {

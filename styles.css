@@ -14974,3 +14974,28 @@ justify-content: space-between;
     grid-template-columns: 1fr;
   }
 }
+
+/* The weekly review page: one column, the trader's reading order. */
+.tj-weekly-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tj-sp-3);
+}
+
+.tj-weekly-stack .tj-strat-card {
+  max-width: none;
+  margin-bottom: 0;
+}
+
+.tj-weekly-duo {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--tj-sp-3);
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .tj-weekly-duo {
+    grid-template-columns: 1fr;
+  }
+}

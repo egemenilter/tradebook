@@ -1,7 +1,10 @@
 import { App, Notice, Plugin, PluginManifest, type TAbstractFile, TFile, addIcon, normalizePath, type WorkspaceLeaf } from "obsidian";
 import { AccountRule, DEFAULT_ACCOUNT_RULES, classifyAccount, knownFuturesSpec } from "./futures";
 import { weekBounds, previousWeek, weekDays } from "./lib/weeks";
-import { writeSection } from "./lib/noteSections";
+import { writeSection, parseChecklist } from "./lib/noteSections";
+
+/** The checklist a fresh week starts from — the routine before the trades. */
+const DEFAULT_WEEKLY_CHECKLIST = ["Check ForexFactory news", "Build weekly plan", "Prepare HTF narrative"];
 import { PropAccount, Trade, Payout, Deposit, FeeAdjustment, AccountType, StrategyRecord } from "./types";
 import { saveTrade, parseTradeFromMarkdown, deleteTradeFile, tradeFilename, tradeMonthPath, setTradeAccount, setTradeFields, updateTradeFields, renameTradeStrategy, updateTradeArrayFields, updateTradeScreenshots } from "./storage";
 import { printFamilySlot, referencesPrintFile, remapPrintReference, remapTradePrintFields } from "./lib/renamePrintReferences";
@@ -979,7 +982,32 @@ export default class TradebookPlugin extends Plugin {
   async ensureWeeklyReview(weekKey: string): Promise<TFile | null> {
     const path = this.weeklyReviewPath(weekKey);
     const existing = this.app.vault.getAbstractFileByPath(path);
-    if (existing instanceof TFile) return existing;
+    if (existing instanceof TFile) {
+      // An older note may predate the default checklist — seed it once, and
+      // only when the trader has no items of their own yet.
+      try {
+        const content = await this.app.vault.cachedRead(existing);
+        if (!/checklist_seeded/.test(content)) {
+          const items = parseChecklist(content).filter((i) => i.text);
+          if (!items.length) {
+            const defaults = DEFAULT_WEEKLY_CHECKLIST.map((t) => `- [ ] ${t}`).join("\n");
+            const seeded = writeSection(content, "Checklist", defaults);
+            await this.app.vault.process(existing, () => seeded);
+          }
+          const fmgr = this.app.fileManager as unknown as {
+            processFrontMatter?: (f: TFile, fn: (fm: Record<string, unknown>) => void) => Promise<void>;
+          };
+          if (typeof fmgr.processFrontMatter === "function") {
+            await fmgr.processFrontMatter(existing, (fm) => {
+              fm.checklist_seeded = true;
+            });
+          }
+        }
+      } catch (err) {
+        console.error("[tradebook] checklist seed skipped", err);
+      }
+      return existing;
+    }
     await this.ensureVaultFolder(normalizePath(`${this.getTradesFolder()}/reviews`));
     const bounds = /^(\d{4})-W(\d{2})$/.exec(weekKey);
     if (!bounds) return null;
@@ -1027,9 +1055,9 @@ export default class TradebookPlugin extends Plugin {
       snapshot.push(`- By symbol: ${[...symbols.entries()].sort((a, b) => b[1].net - a[1].net).map(([k, s]) => `${k} ${s.n}×${money(s.net)}`).join(" · ")}`);
     }
     const body =
-      `---\ntype: weekly-review\nweek: ${weekKey}\nstart: ${week.start}\nend: ${week.end}\n---\n\n` +
+      `---\ntype: weekly-review\nweek: ${weekKey}\nstart: ${week.start}\nend: ${week.end}\nchecklist_seeded: true\n---\n\n` +
       `# ${weekKey} Review\n\n## Performance (auto)\n\n${snapshot.join("\n")}\n\n` +
-      `## Forecast\n\n\n## Key events\n\n\n## Checklist\n\n- [ ] Check ForexFactory news\n- [ ] Build weekly plan\n- [ ] Prepare HTF narrative\n\n` +
+      `## Forecast\n\n\n## Key events\n\n\n## Checklist\n\n${DEFAULT_WEEKLY_CHECKLIST.map((t) => `- [ ] ${t}`).join("\n")}\n\n` +
       `## Review\n\n### What worked\n\n\n### What didn't\n\n\n### Most profitable setups\n\n\n### Costly mistakes\n`;
     try {
       return await this.app.vault.create(path, body);
