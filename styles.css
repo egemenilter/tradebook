@@ -11711,6 +11711,12 @@ body.theme-light .tj-settings .tj-set-logo { filter: invert(1); }
   margin-bottom: 28px;
   max-width: 640px;
 }
+
+/* The setups view lays its cards in columns — the 640px cap belongs to the
+   stacked reads elsewhere, here it only cuts the grid and leaves holes. */
+.tj-setups .tj-strat-card {
+  max-width: none;
+}
 .tj-strat-card-head {
   display: flex;
   align-items: center;
