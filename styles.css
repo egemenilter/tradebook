@@ -14071,7 +14071,86 @@ justify-content: space-between;
 .tj-strat-status-seg {
   display: flex;
   gap: 4px;
-  margin-right: 6px;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+
+.tj-strat-detail-head .tj-strat-item-actions {
+  opacity: 1;
+}
+
+.tj-strat-playbook-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tj-strat-playbook-name {
+  font-weight: var(--tj-w-medium, 600);
+  cursor: pointer;
+}
+
+.tj-strat-playbook-name:hover {
+  text-decoration: underline;
+}
+
+.tj-strat-playbook-tag {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tj-tone-mid, #d9a441) 40%, transparent);
+  color: var(--tj-tone-mid, #d9a441);
+}
+
+.tj-strat-playbook-body {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.tj-strat-playbook-body :is(h1, h2, h3) {
+  font-size: var(--tj-fs-strong);
+  margin: 6px 0 4px;
+}
+
+.tj-strat-playbook-body p,
+.tj-strat-playbook-body li {
+  font-size: var(--tj-fs-body);
+}
+
+.tj-strat-playbook-foot {
+  margin-top: 6px;
+}
+
+/* The note picker modal: a search field and the vault's markdown list. */
+.tj-strat-picker .tj-add-input {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.tj-strat-picker-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.tj-strat-picker-row {
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-2);
+}
+
+.tj-strat-picker-row:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 /* Linked notes: chips that open their note, with a remove cross. */

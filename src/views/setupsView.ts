@@ -1,4 +1,4 @@
-import { ItemView, Notice, setIcon, TFile, type WorkspaceLeaf } from "obsidian";
+import { ItemView, Modal, MarkdownRenderer, Notice, setIcon, TFile, type WorkspaceLeaf } from "obsidian";
 import type TradebookPlugin from "../main";
 import { renderAppShell } from "../ui";
 import { fmtMoney, fmtMoneyCompact, todayKey } from "../tz";
@@ -927,11 +927,11 @@ export class SetupsView extends ItemView {
     const streak = streakLabel(g.series);
     if (streak) titleBlock.createSpan({ cls: "tj-strat-detail-streak", text: streak });
 
-    const actions = titleRow.createDiv({ cls: "tj-strat-item-actions" });
-    // Lifecycle: the strategy's own state, shown wherever its name is.
+    // Lifecycle: the strategy's own state, sitting beside its name where the
+    // eye already is — not tucked into the icon row.
     const rec = (this.plugin.settings.strategies ?? []).find((s) => s.name === name);
     const status = rec?.status ?? "active";
-    const statusSeg = actions.createDiv({ cls: "tj-strat-status-seg" });
+    const statusSeg = titleBlock.createDiv({ cls: "tj-strat-status-seg" });
     for (const [id, label] of [
       ["active", "Active"],
       ["testing", "Testing"],
@@ -943,9 +943,14 @@ export class SetupsView extends ItemView {
         attr: { type: "button" },
       }).addEventListener("click", () => {
         if (status === id) return;
-        void this.plugin.setStrategyStatus(name, id);
+        void (async () => {
+          await this.plugin.setStrategyStatus(name, id);
+          new Notice(`"${name}" marked ${id}.`);
+        })();
       });
     }
+
+    const actions = titleRow.createDiv({ cls: "tj-strat-item-actions" });
     const noteBtn = actions.createEl("button", { cls: "tj-iconbtn" });
     setIcon(noteBtn, "book-open");
     attachTip(noteBtn, { title: "Open the strategy note", sub: "The note in your vault, outside this panel." });
@@ -963,35 +968,19 @@ export class SetupsView extends ItemView {
     attachTip(delBtn, { title: "Remove from the list", sub: "Trades and the strategy note stay as they are." });
     delBtn.addEventListener("click", () => void this.removeStrategy(name));
 
-    // ---- Stat strip: the five numbers the chart is read against ----
-    let cum = 0;
-    let peak = 0;
-    let maxDD = 0;
-    for (const t of g.series) {
-      cum += netPnl(t);
-      peak = Math.max(peak, cum);
-      maxDD = Math.max(maxDD, peak - cum);
-    }
-    const grid = main.createDiv({ cls: "tj-strat-statstrip" });
+    // ---- Metric grid ----
+    const grid = main.createDiv({ cls: "tj-strat-statgrid" });
     const stat = (label: string, value: string, cls = ""): void => {
-      const cell = grid.createDiv({ cls: `tj-strat-stat ${cls}`.trim() });
+      const cell = grid.createDiv({ cls: "tj-strat-stat" });
       cell.createDiv({ cls: "tj-strat-stat-l", text: label });
-      cell.createDiv({ cls: `tj-strat-stat-v ${cls === "is-hypothetical" ? "" : cls}`.trim(), text: value });
+      cell.createDiv({ cls: `tj-strat-stat-v ${cls}`.trim(), text: value });
     };
+    stat("Trades", String(g.n));
+    stat("Net", g.n ? fmtMoney(g.net) : "—", g.n ? toneClass(g.net) : "");
+    stat("Win rate", g.n ? `${Math.round((g.wins / g.n) * 100)}%` : "—");
     stat("Profit factor", g.n ? profitFactor(g) : "—", g.n ? profitFactorClass(g) : "");
-    stat("Total P&L", g.n ? fmtMoney(g.net) : "—", g.n ? toneClass(g.net) : "");
-    stat("Win rate", g.n ? `${Math.round((g.wins / g.n) * 100)}%` : "—", g.n ? (g.wins / g.n >= 0.5 ? "tj-pos" : "tj-neg") : "");
-    stat("Expectancy", g.n ? fmtMoney(g.net / g.n) : "—", g.n ? toneClass(g.net / g.n) : "");
-    stat("Max drawdown", g.series.length ? fmtMoney(-maxDD) : "—", g.series.length && maxDD > 0 ? "tj-neg" : "");
-    if (g.series.length) {
-      const line = main.createDiv({ cls: "tj-strat-detail-meta" });
-      line.createSpan({ text: `${g.n} ${g.n === 1 ? "trade" : "trades"}` });
-      if (g.rN) {
-        const rAvg = g.rSum / g.rN;
-        line.createSpan({ text: ` · Avg ${rAvg >= 0 ? "+" : ""}${rAvg.toFixed(2)}R` });
-      }
-      line.createSpan({ text: g.missedN ? ` · Missed ${g.missedN} (${fmtMoney(g.missedPnl)})` : " · Missed 0" });
-    }
+    stat("Avg R", g.n ? fmtAvgR(g.rSum, g.rN) : "—", g.rN ? toneClass(g.rSum / (g.rN || 1)) : "");
+    stat("Missed", g.missedN ? `${g.missedN} · ${fmtMoney(g.missedPnl)}` : "0", g.missedN ? "is-hypothetical" : "");
 
     // ---- Cumulative chart, in dollars or in R ----
     const chartCard = main.createDiv({ cls: "tj-strat-card tj-strat-chartcard" });
@@ -1020,20 +1009,14 @@ export class SetupsView extends ItemView {
       value: valueOf,
       fmt: fmtOf,
       axisFmt: this.chartMode === "r" ? fmtOf : fmtMoneyCompact,
-      cssHeight: 420,
     });
     if (this.chartMode === "r") {
       chartEl.setAttr("title", "Cumulative R — trades without a recorded stop cannot sit on an R curve, so they are left out.");
     }
 
-    // ---- Everything beside the chart: rules left, the trade shapes right ----
-    const midGrid = main.createDiv({ cls: "tj-strat-detail-grid" });
-    const leftCol = midGrid.createDiv({ cls: "tj-strat-detail-col" });
-    const rightCol = midGrid.createDiv({ cls: "tj-strat-detail-col" });
-
     // ---- Outcomes: one bar per trade, tallest = biggest move ----
     if (g.series.length) {
-      const ocCard = rightCol.createDiv({ cls: "tj-strat-card" });
+      const ocCard = main.createDiv({ cls: "tj-strat-card" });
       ocCard.createDiv({ cls: "tj-strat-card-title", text: "Outcomes" });
       ocCard.createDiv({
         cls: "tj-strat-outcome-cap",
@@ -1059,7 +1042,7 @@ export class SetupsView extends ItemView {
       syms.set(k, s);
     }
     if (syms.size > 1) {
-      const symCard = rightCol.createDiv({ cls: "tj-strat-card" });
+      const symCard = main.createDiv({ cls: "tj-strat-card" });
       symCard.createDiv({ cls: "tj-strat-card-title", text: "By symbol" });
       const rowsEl = symCard.createDiv({ cls: "tj-strat-symbols" });
       const symMax = Math.max(...[...syms.values()].map((s) => Math.abs(s.net)), 1);
@@ -1074,11 +1057,15 @@ export class SetupsView extends ItemView {
     }
 
     // ---- Rules ----
-    const rulesCard = leftCol.createDiv({ cls: "tj-strat-card tj-strat-rulescard" });
+    // The editor shows only what the trader wrote: the note's own heading and
+    // intro line stay in the file and are rebuilt on save.
+    const rulesCard = main.createDiv({ cls: "tj-strat-card tj-strat-rulescard" });
     const rulesHead = rulesCard.createDiv({ cls: "tj-strat-card-head" });
     rulesHead.createDiv({ cls: "tj-strat-card-title", text: "Rules" });
     const bodyText = await this.plugin.readStrategyNoteBody(name);
-    const shown = bodyText.trim().replace(/^#\s+.*\n?/, "").trim();
+    const boiler = /^#[^\n]*\n+>[^\n]*\n?/.exec(bodyText)?.[0] ?? "";
+    const userRules = bodyText.slice(boiler.length).trim();
+    const shown = userRules;
     const statusChip = rulesHead.createSpan({
       cls: "tj-strat-rules-chip " + (shown ? "is-ready" : "is-empty"),
       text: shown ? "rules ✓" : "no rules yet",
@@ -1095,11 +1082,12 @@ export class SetupsView extends ItemView {
         void this.render();
       });
       const ta = rulesBody.createEl("textarea", { cls: "tj-strat-rules-input" });
-      ta.value = bodyText;
+      ta.value = userRules;
       const row = rulesBody.createDiv({ cls: "tj-strat-rules-actions" });
       const saveBtn = row.createEl("button", { cls: "tj-btn tj-mini", text: "Save rules" });
       saveBtn.addEventListener("click", async () => {
-        const okSave = await this.plugin.saveStrategyNoteBody(name, ta.value);
+        const nextBody = boiler + (ta.value.trim() ? `${ta.value.trim()}\n` : "");
+        const okSave = await this.plugin.saveStrategyNoteBody(name, nextBody);
         if (okSave) new Notice("Rules saved into the strategy note.");
         else new Notice("Could not write the note.");
         this.rulesEditing = false;
@@ -1125,7 +1113,7 @@ export class SetupsView extends ItemView {
 
     // ---- Recent trades ----
     if (g.series.length) {
-      const recentCard = rightCol.createDiv({ cls: "tj-strat-card" });
+      const recentCard = main.createDiv({ cls: "tj-strat-card" });
       recentCard.createDiv({ cls: "tj-strat-card-title", text: "Recent trades" });
       const recent = recentCard.createDiv({ cls: "tj-strat-recent tj-strat-recent-page" });
       for (const t of [...g.series].reverse().slice(0, 8)) {
@@ -1147,55 +1135,111 @@ export class SetupsView extends ItemView {
     await this.renderPrints(metaGrid, name);
   }
 
-  /** Notes the strategy is read against — stored on its note, opened here. */
-  private async renderLinkedNotes(host: HTMLElement, name: string): Promise<void> {
-    const card = host.createDiv({ cls: "tj-strat-card" });
-    card.createDiv({ cls: "tj-strat-card-title", text: "Linked notes" });
-    const meta = await this.plugin.readStrategyNoteMeta(name);
-    const chips = card.createDiv({ cls: "tj-strat-linked" });
-    if (!meta.linked.length) {
-      chips.createDiv({ cls: "tj-strat-rules-empty", text: "No notes linked yet — link one below." });
-    }
-    for (const path of meta.linked) {
-      const chip = chips.createDiv({ cls: "tj-strat-linked-chip" });
-      const label = path.split("/").pop()?.replace(/\.md$/, "") || path;
-      chip.createSpan({ cls: "tj-strat-linked-name", text: label });
-      chip.setAttr("title", "Open the note");
-      chip.addEventListener("click", () => void this.plugin.openVaultPath(path));
-      const x = chip.createEl("button", { cls: "tj-strat-linked-x", text: "✕", attr: { type: "button" } });
-      x.addEventListener("click", (e) => {
-        e.stopPropagation();
-        void (async () => {
-          await this.plugin.saveStrategyNoteMeta(name, { linked: meta.linked.filter((p) => p !== path) });
-          await this.render();
-        })();
-      });
-    }
-    const add = card.createDiv({ cls: "tj-strat-linked-add" });
-    const input = add.createEl("input", {
+  /** The searchable note picker the link button opens — every markdown file
+   *  in the vault, narrowed as the trader types. */
+  private openNotePicker(name: string, linked: string[]): void {
+    const modal = new Modal(this.plugin.app);
+    modal.titleEl.setText("Link a note");
+    const body = modal.contentEl;
+    body.addClass("tj-strat-picker");
+    const search = body.createEl("input", {
       type: "text",
       cls: "tj-add-input",
-      attr: { list: `tj-strat-note-list`, spellcheck: "false", placeholder: "Link a note…" },
+      attr: { spellcheck: "false", placeholder: "Type to search notes…" },
     });
-    const dl = add.createEl("datalist", { attr: { id: "tj-strat-note-list" } });
-    for (const f of this.plugin.app.vault.getMarkdownFiles()) {
-      if (f.path.includes("library/strategies") && f.name !== `${name}.md`) continue;
-      dl.createEl("option", { attr: { value: f.path } });
+    const list = body.createDiv({ cls: "tj-strat-picker-list" });
+    const files = this.plugin.app.vault.getMarkdownFiles().sort((a, b) => a.path.localeCompare(b.path));
+    const draw = (): void => {
+      const q = search.value.trim().toLowerCase();
+      list.empty();
+      for (const f of files.filter((f) => !q || f.path.toLowerCase().includes(q))) {
+        const row = list.createDiv({ cls: "tj-strat-picker-row" });
+        row.createSpan({ cls: "tj-strat-picker-name", text: f.path });
+        row.addEventListener("click", () => {
+          if (!linked.includes(f.path)) {
+            // The newest link becomes the playbook — it sits first.
+            void (async () => {
+              await this.plugin.saveStrategyNoteMeta(name, { linked: [f.path, ...linked.filter((p) => p !== f.path)] });
+              modal.close();
+              await this.render();
+            })();
+          } else modal.close();
+        });
+      }
+      if (!list.children.length) list.createDiv({ cls: "tj-strat-rules-empty", text: "No notes match." });
+    };
+    search.addEventListener("input", draw);
+    draw();
+    search.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const first = list.querySelector<HTMLElement>(".tj-strat-picker-row");
+        first?.click();
+      }
+    });
+    modal.open();
+    window.setTimeout(() => search.focus(), 50);
+  }
+
+  /** Linked notes: the first one is the playbook — its content renders right
+   *  here; the rest are chips. Everything lives on the strategy note. */
+  private async renderLinkedNotes(host: HTMLElement, name: string): Promise<void> {
+    const card = host.createDiv({ cls: "tj-strat-card" });
+    const meta = await this.plugin.readStrategyNoteMeta(name);
+    const head = card.createDiv({ cls: "tj-strat-card-head" });
+    head.createDiv({ cls: "tj-strat-card-title", text: "Linked notes" });
+    const linkBtn = head.createEl("button", { cls: "tj-btn tj-mini", text: "＋ link note" });
+    linkBtn.addEventListener("click", () => this.openNotePicker(name, meta.linked));
+
+    if (!meta.linked.length) {
+      card.createDiv({ cls: "tj-strat-rules-empty", text: "No notes linked yet — link the playbook you trade this setup from." });
+      return;
     }
-    const commit = () => {
-      const raw = input.value.trim();
-      if (!raw) return;
-      const path = raw.endsWith(".md") ? raw : `${raw}.md`;
-      if (meta.linked.includes(path)) return;
+
+    // The playbook: the first linked note, rendered inline.
+    const playbookPath = meta.linked[0];
+    const pbFile = this.plugin.app.vault.getAbstractFileByPath(playbookPath);
+    if (pbFile instanceof TFile) {
+      const pbHead = card.createDiv({ cls: "tj-strat-playbook-head" });
+      const pbName = pbHead.createSpan({ cls: "tj-strat-playbook-name", text: pbFile.basename });
+      pbName.addEventListener("click", () => void this.plugin.openVaultPath(playbookPath));
+      pbHead.createSpan({ cls: "tj-strat-playbook-tag", text: "playbook" });
+      const open = pbHead.createEl("button", { cls: "tj-strat-linked-x", text: "open", attr: { type: "button", title: "Open the note" } });
+      open.addEventListener("click", () => void this.plugin.openVaultPath(playbookPath));
+      const pbBody = card.createDiv({ cls: "tj-strat-playbook-body" });
+      try {
+        const content = await this.plugin.app.vault.cachedRead(pbFile);
+        void MarkdownRenderer.render(this.plugin.app, content, pbBody, playbookPath, this);
+      } catch (err) {
+        console.error("[tradebook] could not render the playbook note", err);
+      }
+    }
+    // The rest: plain chips.
+    if (meta.linked.length > 1) {
+      const chips = card.createDiv({ cls: "tj-strat-linked" });
+      for (const path of meta.linked.slice(1)) {
+        const chip = chips.createDiv({ cls: "tj-strat-linked-chip" });
+        chip.createSpan({ cls: "tj-strat-linked-name", text: path.split("/").pop()?.replace(/\.md$/, "") || path });
+        chip.setAttr("title", "Open the note");
+        chip.addEventListener("click", () => void this.plugin.openVaultPath(path));
+        const x = chip.createEl("button", { cls: "tj-strat-linked-x", text: "✕", attr: { type: "button" } });
+        x.addEventListener("click", (e) => {
+          e.stopPropagation();
+          void (async () => {
+            await this.plugin.saveStrategyNoteMeta(name, { linked: meta.linked.filter((p) => p !== path) });
+            await this.render();
+          })();
+        });
+      }
+    }
+    // Unlink the playbook: it just leaves the list.
+    const unlink = card.createDiv({ cls: "tj-strat-playbook-foot" });
+    const un = unlink.createEl("button", { cls: "tj-strat-linked-x", text: `unlink ${pbFile instanceof TFile ? pbFile.basename : ""}`.trim(), attr: { type: "button" } });
+    un.addEventListener("click", () => {
       void (async () => {
-        await this.plugin.saveStrategyNoteMeta(name, { linked: [...meta.linked, path] });
+        await this.plugin.saveStrategyNoteMeta(name, { linked: meta.linked.filter((p) => p !== playbookPath) });
         await this.render();
       })();
-    };
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") commit();
     });
-    input.addEventListener("change", commit);
   }
 
   /** The strategy's prints: stored with its note, shown as a thumbnail grid. */
@@ -1229,7 +1273,7 @@ export class SetupsView extends ItemView {
       const cell = grid.createDiv({ cls: "tj-strat-print" });
       const img = cell.createEl("img", { attr: { src: this.plugin.app.vault.getResourcePath(file), alt: path } });
       img.style.cursor = "zoom-in";
-      img.addEventListener("click", () => void this.plugin.openVaultPath(path));
+      img.addEventListener("click", () => void this.plugin.openMediaPreview(path));
       const x = cell.createEl("button", { cls: "tj-strat-print-x", text: "✕", attr: { type: "button", title: "Remove from the list (the file stays in the vault)" } });
       x.addEventListener("click", () => {
         void (async () => {

@@ -1335,6 +1335,17 @@ export default class TradebookPlugin extends Plugin {
     }
   }
 
+  /** Open an image the way Obsidian shows any vault media — a real preview. */
+  async openMediaPreview(path: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return;
+    try {
+      await this.app.workspace.getLeaf("tab").openFile(file);
+    } catch (err) {
+      console.error("[tradebook] could not open the preview", err);
+    }
+  }
+
   /** A strategy's lifecycle, without rewriting anything else. */
   async setStrategyStatus(name: string, status: StrategyRecord["status"]): Promise<void> {
     const rec = this.findStrategy(name);
