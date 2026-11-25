@@ -74,6 +74,8 @@ class ImportCsvModal extends Modal {
   /** The session's explicit ticks and unticks, scoped to the mapped leader set. */
   private selection = newImportSelection();
   private parsed: ParsedFile | null = null;
+  /** Optional start line: trades dated before this day stay out of the batch. */
+  private importFrom = "";
   /** The batch plan: detected accounts, dedupe counts and the write split. */
   private plan: BatchPlan | null = null;
   /** The parsed trades of each dropped file, for grouping by detected account. */
@@ -347,6 +349,25 @@ class ImportCsvModal extends Modal {
       text: "This applies to times that carry no zone. A zone written in the export takes precedence; an abbreviation the importer does not recognize is refused rather than guessed.",
       cls: "tj-import-zonenote",
     });
+
+    // The optional start line: an old report may carry history the journal
+    // should not inherit — the trader names the first day it should read.
+    const fromRow = host.createDiv({ cls: "tj-import-zonebox" });
+    setIcon(fromRow.createSpan({ cls: "tj-import-zone-ico" }), "calendar");
+    fromRow.createSpan({ text: "Import trades from", cls: "tj-import-zonetitle" });
+    const fromInput = fromRow.createEl("input", {
+      type: "date",
+      attr: { "aria-label": "First trade day to import" },
+    });
+    fromInput.value = this.importFrom;
+    fromInput.addEventListener("change", () => {
+      this.importFrom = fromInput.value || "";
+      if (this.tradeFiles.length) void this.parseTrades();
+    });
+    fromRow.createDiv({
+      text: "Optional — trades dated before this day stay out of this import.",
+      cls: "tj-import-zonenote",
+    });
   }
 
   private renderDropzone(host: HTMLElement): void {
@@ -558,6 +579,7 @@ class ImportCsvModal extends Modal {
       // while the screen says everything went fine.
       this.mapping.clear();
       this.selection = newImportSelection();
+      this.importFrom = "";
 
       this.tradeFiles = execTexts;
       await this.parseTrades();
@@ -697,6 +719,19 @@ class ImportCsvModal extends Modal {
         }
       } else {
         result = parseTradeovateCsv(f.text, rules, zones, this.cashCosts ?? undefined);
+      }
+      // The optional start line: history before it stays out of the batch,
+      // and the preview says so rather than swallowing it silently.
+      if (this.importFrom) {
+        const before = result.trades.length;
+        result = { ...result, trades: result.trades.filter((t) => t.date >= this.importFrom) };
+        const dropped = before - result.trades.length;
+        if (dropped) {
+          result = {
+            ...result,
+            warnings: [...result.warnings, `${dropped} trade(s) before ${this.importFrom} left out of this import.`],
+          };
+        }
       }
       results.push({ name: f.name, result });
       batchFiles.push({ name: f.name, trades: result.trades });
