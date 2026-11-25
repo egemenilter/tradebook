@@ -29,6 +29,8 @@ import tradovateLogo from "../../assets/firm-logos/tradovate.png";
 import ninjaTraderLogo from "../../assets/firm-logos/ninjatrader.png";
 import interactiveBrokersLogo from "../../assets/firm-logos/interactivebrokers.png";
 import ampFuturesLogo from "../../assets/firm-logos/ampfutures.png";
+import roboforexLogo from "../../assets/firm-logos/roboforex.png";
+import pepperstoneLogo from "../../assets/firm-logos/pepperstone.png";
 
 export interface FirmLogoEntry {
   id: string;
@@ -72,6 +74,8 @@ const LOGOS: Record<string, string> = {
   ninjatrader: ninjaTraderLogo,
   interactivebrokers: interactiveBrokersLogo,
   ampfutures: ampFuturesLogo,
+  roboforex: roboforexLogo,
+  pepperstone: pepperstoneLogo,
 };
 
 /** The data URI for a packaged logo, or null when we have no file for it. */
