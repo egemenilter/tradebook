@@ -9593,20 +9593,31 @@ body.theme-light .tj-settings .tj-set-logo { filter: invert(1); }
   border-radius: 8px;
   overflow: hidden;
 }
-/* With a custom range the bar holds two date fields, so the box has to open. */
-.tj-tl-periodbar:has(.tj-period-custom) {
-  gap: 6px;
-  border: none;
-  border-radius: 0;
-  overflow: visible;
+/* With a custom range the whole line is one row: buttons, both date fields and
+   the search. The fields are shrunk to hug their dates so nothing pushes or
+   covers anything else. */
+.tj-tl-periodbar .tj-period-custom {
+  margin-left: 2px;
+  gap: 4px;
 }
-/* The custom range sits on its own line, below the buttons and beside nothing —
-   the search box keeps the space it had. */
-.tj-tl-customrow {
-  width: 100%;
-  gap: 8px;
-  align-items: center;
-  margin: 2px 0 4px;
+.tj-tl-customrow .tj-datefield {
+  width: auto;
+  gap: 3px;
+}
+.tj-tl-customrow .tj-datefield-input {
+  flex: 0 0 auto;
+  width: 88px;
+  height: 22px;
+  padding: 0 3px !important;
+  font-size: var(--tj-fs-small);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: transparent !important;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+}
+.tj-tl-customrow .tj-datefield-input:focus {
+  border-color: var(--interactive-accent);
 }
 .tj-tl-periodbar .tj-pbtn {
   padding: 4px 10px;
@@ -11535,7 +11546,7 @@ body.theme-light .tj-settings .tj-set-logo { filter: invert(1); }
   height: 13px;
 }
 .tj-tl-search input {
-  width: 190px;
+  width: 140px;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
