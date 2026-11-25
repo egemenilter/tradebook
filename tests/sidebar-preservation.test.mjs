@@ -24,7 +24,7 @@ test("the persistent Print Queue owns the existing right-sidebar view id", () =>
 
 test("Print Queue is opt-in in the right sidebar", () => {
   assert.doesNotMatch(main, /PRINT_INBOX_VIEW_TYPE|ensurePrintInboxLeaf|open-print-inbox/);
-  assert.match(main, /await this\.ensureSidebarLeaf\(\);\s*await this\.hidePrintQueueOnStartup\(\);/);
+  assert.match(main, /await this\.ensureSidebarLeaf\(false\);\s*await this\.hidePrintQueueOnStartup\(\);/);
   assert.match(main, /addRibbonIcon\("images", "Tradebook — print queue"/);
   assert.match(main, /async ensurePrintQueueLeaf\(\)/);
   assert.match(main, /const rightLeaf = this\.app\.workspace\.getRightLeaf\?\.\(false\);/);
