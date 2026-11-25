@@ -1012,7 +1012,6 @@ export class SetupsView extends ItemView {
       value: valueOf,
       fmt: fmtOf,
       axisFmt: this.chartMode === "r" ? fmtOf : fmtMoneyCompact,
-      cssHeight: 320,
     });
     if (this.chartMode === "r") {
       chartEl.setAttr("title", "Cumulative R — trades without a recorded stop cannot sit on an R curve, so they are left out.");

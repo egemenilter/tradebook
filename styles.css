@@ -13972,14 +13972,12 @@ justify-content: space-between;
   margin: -4px 0 8px;
 }
 
-/* Below the big chart: rules on the left, the trade shapes on the right.
-   The columns stretch to each other, and the wide side's cards share the
-   extra height so no dead gap is left under the chart. */
+/* Below the big chart: rules on the left, the trade shapes on the right. */
 .tj-strat-detail-grid {
   display: grid;
   grid-template-columns: 1.6fr 1fr;
   gap: var(--tj-sp-3);
-  align-items: stretch;
+  align-items: start;
   margin-bottom: var(--tj-sp-3);
 }
 
@@ -13988,34 +13986,6 @@ justify-content: space-between;
   flex-direction: column;
   gap: var(--tj-sp-3);
   min-width: 0;
-}
-
-.tj-strat-detail-col .tj-strat-card {
-  display: flex;
-  flex-direction: column;
-}
-
-.tj-strat-detail-col .tj-strat-chartcard,
-.tj-strat-detail-col .tj-strat-rulescard {
-  flex: 1 1 auto;
-}
-
-.tj-strat-detail-col .tj-strat-rules-body {
-  flex: 1;
-}
-
-.tj-strat-detail-col .tj-strat-rulescard .tj-strat-rules-text,
-.tj-strat-detail-col .tj-strat-rulescard .tj-strat-rules-empty {
-  white-space: pre-wrap;
-}
-
-.tj-strat-detail-col .tj-strat-chartbox {
-  flex: 1;
-}
-
-.tj-strat-detail-col .tj-strat-chart {
-  height: 100%;
-  min-height: 320px;
 }
 
 @media (max-width: 720px) {
