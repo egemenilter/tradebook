@@ -4660,7 +4660,7 @@ export abstract class WidgetGridView extends ItemView {
     if (title && !title.dataset.tipAttached) {
       attachTip(title, {
         title: "Trading Activity",
-        sub: "Daily Net P&L over the last six months. Green = positive day, red = negative.",
+        sub: "Daily Net P&L over the last twelve months. Green = positive day, red = negative.",
       });
       title.dataset.tipAttached = "1";
     }
@@ -4675,7 +4675,7 @@ export abstract class WidgetGridView extends ItemView {
     const endRef = asOf ? new Date(asOf + "T00:00:00") : new Date();
     const end = new Date(endRef.getFullYear(), endRef.getMonth(), endRef.getDate());
     const endIso = iso(end);
-    const first = new Date(end.getFullYear(), end.getMonth() - 5, 1);
+    const first = new Date(end.getFullYear(), end.getMonth() - 11, 1);
     const firstIso = iso(first);
 
     const source = trades.filter((t) => {

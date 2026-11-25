@@ -4,16 +4,17 @@
    The single source of truth for type and text colour. Every rule below is
    sourced in docs/UX-GUIDELINES.md and measured by tools/ux-audit.mjs. */
 :root {
-  /* Type scale (§1.1) — modular steps, ratio ~1.1–1.2 */
-  --tj-fs-micro: 9.5px; /* axis letters, counters, badges, chevrons, keycaps — micro only */
-  --tj-fs-label: 10px; /* uppercase micro-labels (section titles, strip keys) — eyebrows */
-  --tj-fs-small: 11px; /* hints, sub-lines, meta */
-  --tj-fs-body: 12.5px; /* default text and rows */
-  --tj-fs-strong: 13.5px; /* names, key values */
-  --tj-fs-big: 15px; /* numbers inside cards */
-  --tj-fs-head: 19px; /* the headline value */
-  --tj-fs-display: 24px; /* page and modal titles */
-  --tj-fs-hero: 28px; /* the one figure inside a ring or gauge */
+  /* Type scale (§1.1) — modular steps, ratio ~1.1–1.2. Tuned a step tighter so
+     the dashboard reads dense like a real trading terminal, not like prose. */
+  --tj-fs-micro: 9px; /* axis letters, counters, badges, chevrons, keycaps — micro only */
+  --tj-fs-label: 9.5px; /* uppercase micro-labels (section titles, strip keys) — eyebrows */
+  --tj-fs-small: 10.5px; /* hints, sub-lines, meta */
+  --tj-fs-body: 11.5px; /* default text and rows */
+  --tj-fs-strong: 12.5px; /* names, key values */
+  --tj-fs-big: 14px; /* numbers inside cards */
+  --tj-fs-head: 17px; /* the headline value */
+  --tj-fs-display: 21px; /* page and modal titles */
+  --tj-fs-hero: 25px; /* the one figure inside a ring or gauge */
   /* Weights (§1.2) — three is all a hierarchy needs */
   --tj-w-regular: 400;
   --tj-w-medium: 600;
@@ -35,13 +36,13 @@
      donut, bars and calendar read at a glance without going neon. */
   --tj-home-good: color-mix(in srgb, var(--tj-chart-good) 62%, var(--tj-tone-good));
   --tj-home-bad: color-mix(in srgb, var(--tj-chart-bad) 62%, var(--tj-tone-bad));
-  /* Space (§3) — 4px base */
-  --tj-sp-1: 4px;
-  --tj-sp-2: 8px;
-  --tj-sp-3: 12px;
-  --tj-sp-4: 16px;
-  --tj-sp-5: 24px;
-  --tj-sp-6: 32px;
+  /* Space (§3) — 4px base, tightened a notch for denser cards */
+  --tj-sp-1: 3px;
+  --tj-sp-2: 7px;
+  --tj-sp-3: 10px;
+  --tj-sp-4: 13px;
+  --tj-sp-5: 20px;
+  --tj-sp-6: 26px;
 }
 
 /* ---------------- Layout ---------------- */
