@@ -194,6 +194,44 @@ function multiLineChart(
   zero.setAttribute("y2", y(0).toFixed(1));
   zero.setAttribute("class", "zero");
   svg.appendChild(zero);
+  // The zero line also splits the fill: whatever the curve holds above it
+  // paints green, whatever it dips below paints red — the colour belongs to
+  // the range, not to where the trade ended. Two clips cut the same area path
+  // at the zero line; two gradients fade each colour from its curve side
+  // toward the line.
+  const zeroYv = y(0);
+  const mkClip = (id: string, top: number, height: number): void => {
+    const clip = document.createElementNS(svgNS, "clipPath");
+    clip.setAttribute("id", id);
+    const rect = document.createElementNS(svgNS, "rect");
+    rect.setAttribute("x", String(pad));
+    rect.setAttribute("y", top.toFixed(2));
+    rect.setAttribute("width", String(w - 2 * pad));
+    rect.setAttribute("height", Math.max(0, height).toFixed(2));
+    clip.appendChild(rect);
+    defs.appendChild(clip);
+  };
+  mkClip(`tjclipA${chartSeq}`, 0, zeroYv);
+  mkClip(`tjclipB${chartSeq}`, zeroYv, h - pad - zeroYv);
+  const mkGrad = (id: string, y1: number, y2: number, color: string, o1: number, o2: number): void => {
+    const grad = document.createElementNS(svgNS, "linearGradient");
+    grad.setAttribute("id", id);
+    grad.setAttribute("gradientUnits", "userSpaceOnUse");
+    grad.setAttribute("x1", "0");
+    grad.setAttribute("x2", "0");
+    grad.setAttribute("y1", y1.toFixed(2));
+    grad.setAttribute("y2", y2.toFixed(2));
+    for (const [offset, opacity] of [[0, o1], [1, o2]] as Array<[number, number]>) {
+      const stop = document.createElementNS(svgNS, "stop");
+      stop.setAttribute("offset", String(offset));
+      stop.setAttribute("stop-color", color);
+      stop.setAttribute("stop-opacity", String(opacity));
+      grad.appendChild(stop);
+    }
+    defs.appendChild(grad);
+  };
+  mkGrad(`tjgradup${chartSeq}`, 0, zeroYv, toneGood, 0.32, 0.08);
+  mkGrad(`tjgraddown${chartSeq}`, zeroYv, h - pad, toneBad, 0.08, 0.32);
   usable.forEach((pts, i) => {
     const cum: number[] = [];
     let acc = 0;
@@ -207,30 +245,21 @@ function multiLineChart(
     const color = final > 0 ? toneGood : final < 0 ? toneBad : toneMuted;
     const x = (j: number): number => pad + (j * (w - 2 * pad)) / (cum.length - 1);
     const lineD = monotonePath(cum.map((_, j) => x(j)), cum.map((v) => y(v)));
-    // The area under the line, fading from the line's colour downward.
-    const grad = document.createElementNS(svgNS, "linearGradient");
-    grad.setAttribute("id", `tjgrad${chartSeq}_${i}`);
-    grad.setAttribute("x1", "0");
-    grad.setAttribute("y1", "0");
-    grad.setAttribute("x2", "0");
-    grad.setAttribute("y2", "1");
-    const s1 = document.createElementNS(svgNS, "stop");
-    s1.setAttribute("offset", "0");
-    s1.setAttribute("stop-color", color);
-    s1.setAttribute("stop-opacity", "0.30");
-    const s2 = document.createElementNS(svgNS, "stop");
-    s2.setAttribute("offset", "1");
-    s2.setAttribute("stop-color", color);
-    s2.setAttribute("stop-opacity", "0.02");
-    grad.appendChild(s1);
-    grad.appendChild(s2);
-    defs.appendChild(grad);
-    const area = document.createElementNS(svgNS, "path");
+    // The area between the curve and the zero line, painted twice: the part
+    // above the zero line clips to green, the part below it to red.
     const zeroY = y(0).toFixed(2);
-    area.setAttribute("d", `${lineD} L ${x(cum.length - 1).toFixed(2)} ${zeroY} L ${x(0).toFixed(2)} ${zeroY} Z`);
-    area.setAttribute("fill", `url(#tjgrad${chartSeq}_${i})`);
-    area.setAttribute("stroke", "none");
-    svg.appendChild(area);
+    const areaD = `${lineD} L ${x(cum.length - 1).toFixed(2)} ${zeroY} L ${x(0).toFixed(2)} ${zeroY} Z`;
+    for (const [fill, clip] of [
+      [`url(#tjgradup${chartSeq})`, `url(#tjclipA${chartSeq})`],
+      [`url(#tjgraddown${chartSeq})`, `url(#tjclipB${chartSeq})`],
+    ] as Array<[string, string]>) {
+      const area = document.createElementNS(svgNS, "path");
+      area.setAttribute("d", areaD);
+      area.setAttribute("fill", fill);
+      area.setAttribute("clip-path", clip);
+      area.setAttribute("stroke", "none");
+      svg.appendChild(area);
+    }
     const line = document.createElementNS(svgNS, "path");
     line.setAttribute("d", lineD);
     line.setAttribute("class", "tj-strat-chart-line");
