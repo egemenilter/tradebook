@@ -1,6 +1,7 @@
 import { App, Notice, Plugin, PluginManifest, type TAbstractFile, TFile, addIcon, normalizePath, type WorkspaceLeaf } from "obsidian";
 import { AccountRule, DEFAULT_ACCOUNT_RULES, classifyAccount, knownFuturesSpec } from "./futures";
 import { weekBounds, previousWeek, weekDays } from "./lib/weeks";
+import { writeSection } from "./lib/noteSections";
 import { PropAccount, Trade, Payout, Deposit, FeeAdjustment, AccountType, StrategyRecord } from "./types";
 import { saveTrade, parseTradeFromMarkdown, deleteTradeFile, tradeFilename, tradeMonthPath, setTradeAccount, setTradeFields, updateTradeFields, renameTradeStrategy, updateTradeArrayFields, updateTradeScreenshots } from "./storage";
 import { printFamilySlot, referencesPrintFile, remapPrintReference, remapTradePrintFields } from "./lib/renamePrintReferences";
@@ -54,6 +55,7 @@ import { TradeDetailView, TRADE_DETAIL_VIEW_TYPE } from "./views/tradeDetailView
 import { TradebookSidebarView, TRADEBOOK_SIDEBAR_VIEW_TYPE } from "./views/sidebarView";
 import { HomeView, HOME_VIEW_TYPE } from "./views/homeView";
 import { SetupsView, SETUPS_VIEW_TYPE } from "./views/setupsView";
+import { WeeklyReviewView, WEEKLY_REVIEW_VIEW_TYPE } from "./views/weeklyReviewView";
 import { PrintQueueView, PRINT_QUEUE_VIEW_TYPE } from "./views/printQueueView";
 import { openTradeModal } from "./views/tradeModal";
 import { buildDiagnostics, diagnosticsFilename } from "./lib/diagnostics";
@@ -440,6 +442,7 @@ const ALL_VIEW_TYPES = [
   TRADE_DETAIL_VIEW_TYPE,
   TRADEBOOK_SIDEBAR_VIEW_TYPE,
   SETUPS_VIEW_TYPE,
+  WEEKLY_REVIEW_VIEW_TYPE,
 ];
 
 /** One note a rename pass would move, plus the prints that follow it. */
@@ -502,6 +505,7 @@ export default class TradebookPlugin extends Plugin {
 
     this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf, this));
     this.registerView(SETUPS_VIEW_TYPE, (leaf) => new SetupsView(leaf, this));
+    this.registerView(WEEKLY_REVIEW_VIEW_TYPE, (leaf) => new WeeklyReviewView(leaf, this));
     this.registerView(PRINT_QUEUE_VIEW_TYPE, (leaf) => new PrintQueueView(leaf, this));
     this.registerView(ACCOUNT_DASH_VIEW_TYPE, (leaf) => new AccountDashboardView(leaf, this));
     this.registerView(TRADE_LOG_VIEW_TYPE, (leaf) => new TradeLogView(leaf, this));
@@ -1024,8 +1028,8 @@ export default class TradebookPlugin extends Plugin {
     }
     const body =
       `---\ntype: weekly-review\nweek: ${weekKey}\nstart: ${week.start}\nend: ${week.end}\n---\n\n` +
-      `# ${weekKey} Review\n\n## Snapshot (auto)\n\n${snapshot.join("\n")}\n\n` +
-      `## What worked\n\n\n## What didn't\n\n\n## Most profitable setups\n\n\n## Costly mistakes\n\n\n## Next week focus\n\n- [ ] \n`;
+      `# ${weekKey} Review\n\n## Performance (auto)\n\n${snapshot.join("\n")}\n\n` +
+      `## Forecast\n\n\n## Checklist\n\n- [ ] \n\n## Review\n\n### What worked\n\n\n### What didn't\n\n\n### Most profitable setups\n\n\n### Costly mistakes\n`;
     try {
       return await this.app.vault.create(path, body);
     } catch (err) {
@@ -1043,6 +1047,31 @@ export default class TradebookPlugin extends Plugin {
       return;
     }
     await this.openVaultPath(file.path);
+  }
+
+  /** The review PAGE — the note with the week's live performance around it. */
+  async openWeeklyReviewView(weekKey?: string): Promise<void> {
+    const key = weekKey ?? weekBounds(new Date()).key;
+    await this.ensureWeeklyReview(key);
+    const leaf = this.app.workspace.getLeaf("tab");
+    await leaf.setViewState({ type: WEEKLY_REVIEW_VIEW_TYPE, active: true });
+    const view = leaf.view as unknown as { setWeek?: (k: string) => Promise<void> };
+    if (typeof view.setWeek === "function") {
+      await view.setWeek(key);
+    }
+  }
+
+  /** One `## ` section of the week's note, written in place. */
+  async saveWeeklyReviewSection(weekKey: string, heading: string, content: string): Promise<boolean> {
+    const file = await this.ensureWeeklyReview(weekKey);
+    if (!file) return false;
+    try {
+      await this.app.vault.process(file, (content0) => writeSection(content0, heading, content));
+      return true;
+    } catch (err) {
+      console.error("[tradebook] could not save the weekly review section", err);
+      return false;
+    }
   }
 
   /** `<root>/<year>/attachments` — where a trade's screenshots live. */

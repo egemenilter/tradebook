@@ -67,5 +67,7 @@ test("the weekly review reads weeks only through this module", () => {
   }
   assert.match(main, /weeklyReviewPath\(weekKey\)/);
   assert.match(main, /ensureWeeklyReview/);
-  assert.match(dash, /openWeeklyReview\(week\.key\)/);
+  assert.match(dash, /openWeeklyReviewView\(week\.key\)/, "the widget opens the review page, not just the note");
+  assert.match(main, /openWeeklyReviewView/);
+  assert.match(main, /saveWeeklyReviewSection/);
 });

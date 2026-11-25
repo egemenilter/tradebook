@@ -14803,3 +14803,133 @@ justify-content: space-between;
 .tj-week-open {
   margin-top: 4px;
 }
+
+/* The weekly review page: forecast left, the week's numbers right. */
+.tj-weekly-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--tj-sp-3);
+  align-items: start;
+}
+
+.tj-weekly-grid .tj-strat-detail-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tj-sp-3);
+  min-width: 0;
+}
+
+.tj-weekly-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.tj-weekly-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-right: auto;
+}
+
+.tj-weekly-range {
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-3, #8a9099);
+}
+
+.tj-weekly-hint {
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-3, #8a9099);
+  margin-bottom: 6px;
+}
+
+.tj-weekly-ta {
+  min-height: 140px;
+  width: 100%;
+  resize: vertical;
+}
+
+.tj-weekly-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tj-weekly-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tj-weekly-check-label {
+  font-size: var(--tj-fs-body);
+  color: var(--tj-fg-2, #a8aeb4);
+  cursor: pointer;
+}
+
+.tj-weekly-check-label.is-done {
+  text-decoration: line-through;
+  color: var(--tj-fg-3, #8a9099);
+}
+
+.tj-weekly-check-add .tj-add-input {
+  width: 100%;
+}
+
+.tj-weekly-perf {
+  display: flex;
+  gap: var(--tj-sp-2);
+  margin-bottom: 8px;
+}
+
+.tj-weekly-perf-cell {
+  flex: 1;
+  text-align: center;
+}
+
+.tj-weekly-perf-cell .tj-strat-stat-v {
+  font-size: var(--tj-fs-big);
+}
+
+.tj-weekly-chart {
+  width: 100%;
+}
+
+.tj-weekly-context {
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-3, #8a9099);
+  margin: 6px 0;
+}
+
+.tj-weekly-extremes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tj-weekly-extreme {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-2, #a8aeb4);
+  cursor: pointer;
+}
+
+.tj-weekly-extreme:hover {
+  color: var(--text-normal);
+}
+
+.tj-week-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+@media (max-width: 720px) {
+  .tj-weekly-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -4951,9 +4951,12 @@ export abstract class WidgetGridView extends ItemView {
       context.createSpan({ cls: "tj-fg-3", text: "Last week had no closed trades to compare." });
     }
 
-    // ---- The door into the review note ----
-    const btn = body.createEl("button", { cls: "tj-btn tj-mini tj-week-open", text: `Open weekly review` });
-    btn.addEventListener("click", () => void this.plugin.openWeeklyReview(week.key));
+    // ---- The doors: Friday's review, and Sunday's forecast ----
+    const btnRow = body.createDiv({ cls: "tj-week-actions" });
+    const reviewBtn = btnRow.createEl("button", { cls: "tj-btn tj-mini tj-week-open", text: "Review this week" });
+    reviewBtn.addEventListener("click", () => void this.plugin.openWeeklyReviewView(week.key));
+    const forecastBtn = btnRow.createEl("button", { cls: "tj-btn tj-mini", text: "Forecast next week" });
+    forecastBtn.addEventListener("click", () => void this.plugin.openWeeklyReviewView(weekBounds(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7)).key));
   }
 
   /** Missed setups, newest first: visible on Home, counted in nothing. */
