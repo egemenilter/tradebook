@@ -14933,3 +14933,44 @@ justify-content: space-between;
     grid-template-columns: 1fr;
   }
 }
+
+/* Weekly review page extras: events, the trade list, the print comparison. */
+.tj-weekly-events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tj-weekly-event {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--tj-fs-small);
+  color: var(--tj-fg-2, #a8aeb4);
+  padding: 2px 0;
+}
+
+.tj-weekly-trades {
+  display: flex;
+  flex-direction: column;
+}
+
+.tj-weekly-shots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--tj-sp-3);
+}
+
+.tj-weekly-shotcol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .tj-weekly-shots {
+    grid-template-columns: 1fr;
+  }
+}

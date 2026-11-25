@@ -262,6 +262,118 @@ export class WeeklyReviewView extends ItemView {
         row.addEventListener("click", () => void this.plugin.openTradeDetail({ id: t.id }));
       }
     }
+
+    // ---- Key events — the news the week traded around ----
+    const eventsCard = rightCol.createDiv({ cls: "tj-strat-card" });
+    eventsCard.createDiv({ cls: "tj-strat-card-title", text: "Key events" });
+    const eventLines = readSection(body, "Key events").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const saveEvents = (): void =>
+      void this.plugin.saveWeeklyReviewSection(this.weekKey, "Key events", eventLines.join("\n"));
+    const eventsList = eventsCard.createDiv({ cls: "tj-weekly-events" });
+    if (!eventLines.length) {
+      eventsList.createDiv({ cls: "tj-weekly-hint", text: "No events yet — the news that can move the week." });
+    }
+    for (const [index, text] of eventLines.entries()) {
+      const row = eventsList.createDiv({ cls: "tj-weekly-event" });
+      row.createSpan({ text });
+      const x = row.createEl("button", { cls: "tj-strat-linked-x", text: "✕", attr: { type: "button" } });
+      x.addEventListener("click", () => {
+        eventLines.splice(index, 1);
+        saveEvents();
+        void this.render();
+      });
+    }
+    const eventAdd = eventsList.createDiv({ cls: "tj-weekly-check-add" });
+    const eventInput = eventAdd.createEl("input", { type: "text", cls: "tj-add-input", attr: { placeholder: "Tue 15:30 — CPI…" } });
+    eventInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const text = eventInput.value.trim();
+      if (!text) return;
+      eventLines.push(text);
+      eventInput.value = "";
+      saveEvents();
+      void this.render();
+    });
+
+    // ---- The week's trades, one row each, oldest first ----
+    const tradesCard = main.createDiv({ cls: "tj-strat-card" });
+    tradesCard.createDiv({ cls: "tj-strat-card-title", text: `Trades (${trades.length})` });
+    if (!sorted.length) {
+      tradesCard.createDiv({ cls: "tj-weekly-hint", text: "No trades this week." });
+    }
+    const tradeList = tradesCard.createDiv({ cls: "tj-strat-recent tj-weekly-trades" });
+    for (const t of sorted) {
+      const rowEl = tradeList.createDiv({ cls: "tj-strat-recent-row" });
+      rowEl.createSpan({ cls: "tj-strat-recent-date", text: t.date.slice(5) });
+      rowEl.createSpan({ cls: "tj-strat-recent-sym", text: `${t.symbol} ${t.direction === "long" ? "▲" : "▼"}` });
+      const r = tradeR(t);
+      if (r !== null) rowEl.createSpan({ cls: "tj-strat-recent-r", text: `${r >= 0 ? "+" : ""}${r.toFixed(2)}R` });
+      const p = rowEl.createSpan({ cls: "tj-strat-recent-pnl " + toneClass(netPnl(t)) });
+      p.setText(fmtMoney2(netPnl(t)));
+      rowEl.setAttr("title", "Open the trade");
+      rowEl.addEventListener("click", () => void this.plugin.openTradeDetail({ id: t.id }));
+    }
+
+    // ---- Forecast vs Review screenshots, side by side ----
+    const meta = await this.plugin.readWeeklyMeta(this.weekKey);
+    const shotsCard = main.createDiv({ cls: "tj-strat-card" });
+    shotsCard.createDiv({ cls: "tj-strat-card-title", text: "Screenshots" });
+    const shotsGrid = shotsCard.createDiv({ cls: "tj-weekly-shots" });
+    for (const [kind, label] of [["forecast", "Forecast"], ["review", "Review"]] as const) {
+      const col = shotsGrid.createDiv({ cls: "tj-weekly-shotcol" });
+      const colHead = col.createDiv({ cls: "tj-strat-notes-label" });
+      colHead.createSpan({ text: `${label} (${kind === "forecast" ? meta.forecast.length : meta.review.length})` });
+      const plus = colHead.createEl("button", { cls: "tj-strat-notes-plus", text: "+", attr: { type: "button", title: `Add a ${kind} screenshot` } });
+      const fileInput = plus.createEl("input", { type: "file", attr: { accept: "image/png,image/jpeg,image/webp" } });
+      fileInput.style.display = "none";
+      plus.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", () => {
+        const f = fileInput.files?.[0];
+        if (!f) return;
+        const ext = (f.name.split(".").pop() || "png").toLowerCase();
+        void (async () => {
+          const saved = await this.plugin.addWeeklyPrint(this.weekKey, kind, await f.arrayBuffer(), ext);
+          if (!saved) new Notice("Could not store the screenshot.");
+          await this.render();
+        })();
+      });
+      const prints = kind === "forecast" ? meta.forecast : meta.review;
+      const thumbs = col.createDiv({ cls: "tj-strat-prints" });
+      if (!prints.length) {
+        thumbs.createDiv({ cls: "tj-weekly-hint", text: kind === "forecast" ? "Sunday's chart lands here." : "Friday's chart lands here." });
+      }
+      for (const path of prints) {
+        const pf = this.plugin.app.vault.getAbstractFileByPath(path);
+        if (!(pf instanceof TFile)) continue;
+        const cell = thumbs.createDiv({ cls: "tj-strat-print" });
+        const img = cell.createEl("img", { attr: { src: this.plugin.app.vault.getResourcePath(pf), alt: path } });
+        img.style.cursor = "zoom-in";
+        img.addEventListener("click", () => this.openPrintOverlay(this.plugin.app.vault.getResourcePath(pf)));
+        const x = cell.createEl("button", { cls: "tj-strat-print-x", text: "✕", attr: { type: "button", title: "Remove from the list (the file stays in the vault)" } });
+        x.addEventListener("click", () => {
+          void (async () => {
+            await this.plugin.removeWeeklyPrint(this.weekKey, kind, path);
+            await this.render();
+          })();
+        });
+      }
+    }
+  }
+
+  /** The fullscreen media preview — the print over everything, Esc to leave. */
+  private openPrintOverlay(src: string): void {
+    document.querySelectorAll(".tj-strat-media-overlay").forEach((n) => n.remove());
+    const overlay = document.body.createDiv({ cls: "tj-strat-media-overlay" });
+    overlay.createEl("img", { attr: { src, alt: "" } });
+    const close = (): void => {
+      overlay.remove();
+      document.removeEventListener("keydown", onKey);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") close();
+    };
+    overlay.addEventListener("click", close);
+    document.addEventListener("keydown", onKey);
   }
 
   /** Debounced section save: typing settles, then the note catches up. */

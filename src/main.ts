@@ -1029,7 +1029,8 @@ export default class TradebookPlugin extends Plugin {
     const body =
       `---\ntype: weekly-review\nweek: ${weekKey}\nstart: ${week.start}\nend: ${week.end}\n---\n\n` +
       `# ${weekKey} Review\n\n## Performance (auto)\n\n${snapshot.join("\n")}\n\n` +
-      `## Forecast\n\n\n## Checklist\n\n- [ ] \n\n## Review\n\n### What worked\n\n\n### What didn't\n\n\n### Most profitable setups\n\n\n### Costly mistakes\n`;
+      `## Forecast\n\n\n## Key events\n\n\n## Checklist\n\n- [ ] Check ForexFactory news\n- [ ] Build weekly plan\n- [ ] Prepare HTF narrative\n\n` +
+      `## Review\n\n### What worked\n\n\n### What didn't\n\n\n### Most profitable setups\n\n\n### Costly mistakes\n`;
     try {
       return await this.app.vault.create(path, body);
     } catch (err) {
@@ -1070,6 +1071,84 @@ export default class TradebookPlugin extends Plugin {
       return true;
     } catch (err) {
       console.error("[tradebook] could not save the weekly review section", err);
+      return false;
+    }
+  }
+
+  /** The weekly note's list frontmatter: forecast and review screenshots. */
+  async readWeeklyMeta(weekKey: string): Promise<{ forecast: string[]; review: string[] }> {
+    const out = { forecast: [] as string[], review: [] as string[] };
+    const file = await this.ensureWeeklyReview(weekKey);
+    if (!file) return out;
+    try {
+      const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(await this.app.vault.cachedRead(file))?.[1] ?? "";
+      const readList = (key: string): string[] => {
+        const values: string[] = [];
+        const lines = fm.split(/\r?\n/);
+        const idx = lines.findIndex((l) => new RegExp(`^${key}:\\s*$`).test(l));
+        if (idx === -1) return values;
+        for (let i = idx + 1; i < lines.length; i++) {
+          const item = /^\s+-\s+"?([^"]+)"?\s*$/.exec(lines[i]);
+          if (!item) break;
+          values.push(item[1].trim());
+        }
+        return values;
+      };
+      out.forecast = readList("forecast_prints");
+      out.review = readList("review_prints");
+    } catch (err) {
+      console.error("[tradebook] could not read the weekly meta", err);
+    }
+    return out;
+  }
+
+  /** Store a screenshot with the week's note and list it under its kind. */
+  async addWeeklyPrint(weekKey: string, kind: "forecast" | "review", data: ArrayBuffer, ext: string): Promise<string | null> {
+    const file = await this.ensureWeeklyReview(weekKey);
+    if (!file) return null;
+    const dir = normalizePath(`${this.getTradesFolder()}/reviews/attachments`);
+    await this.ensureVaultFolder(dir);
+    const path = normalizePath(`${dir}/${weekKey.toLowerCase()}-${kind}-${Date.now()}.${ext}`);
+    try {
+      await this.app.vault.createBinary(path, data);
+    } catch (err) {
+      console.error("[tradebook] could not store the weekly print", err);
+      return null;
+    }
+    const meta = await this.readWeeklyMeta(weekKey);
+    const patch = kind === "forecast" ? { forecast: [...meta.forecast, path] } : { review: [...meta.review, path] };
+    try {
+      const fmgr = this.app.fileManager as unknown as {
+        processFrontMatter?: (f: TFile, fn: (fm: Record<string, unknown>) => void) => Promise<void>;
+      };
+      if (typeof fmgr.processFrontMatter !== "function") return null;
+      await fmgr.processFrontMatter(file, (fm) => {
+        fm.forecast_prints = patch.forecast ?? (fm.forecast_prints as string[] | undefined);
+        fm.review_prints = patch.review ?? (fm.review_prints as string[] | undefined);
+      });
+      return path;
+    } catch (err) {
+      console.error("[tradebook] could not list the weekly print", err);
+      return null;
+    }
+  }
+
+  async removeWeeklyPrint(weekKey: string, kind: "forecast" | "review", path: string): Promise<boolean> {
+    const meta = await this.readWeeklyMeta(weekKey);
+    const file = await this.ensureWeeklyReview(weekKey);
+    if (!file) return false;
+    const patch = kind === "forecast" ? meta.forecast.filter((p) => p !== path) : meta.review.filter((p) => p !== path);
+    try {
+      const fmgr = this.app.fileManager as unknown as {
+        processFrontMatter?: (f: TFile, fn: (fm: Record<string, unknown>) => void) => Promise<void>;
+      };
+      if (typeof fmgr.processFrontMatter !== "function") return false;
+      await fmgr.processFrontMatter(file, (fm) => {
+        if (kind === "forecast") fm.forecast_prints = patch;
+        else fm.review_prints = patch;
+      });
+      return true;
+    } catch {
       return false;
     }
   }
