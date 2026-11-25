@@ -613,7 +613,9 @@ export default class TradebookPlugin extends Plugin {
         } catch (err) {
           console.error("[tradebook] account maintenance failed:", err);
         }
-        await this.ensureSidebarLeaf();
+        // Plant the sidebar tab without pulling the sidebar open — the journal
+        // waits for the trader, not the other way round.
+        await this.ensureSidebarLeaf(false);
         await this.hidePrintQueueOnStartup();
         await this.cleanupLegacyCache();
         // The journal's default period seeds Home's session period on load.
@@ -875,23 +877,25 @@ export default class TradebookPlugin extends Plugin {
    *  It appears as a tab in the sidebar top bar (like Files/Search/Bookmarks),
    *  so the user can switch between the file tree and our menu natively. */
   async openSidebarView(): Promise<void> {
-    await this.ensureSidebarLeaf();
+    await this.ensureSidebarLeaf(true);
   }
 
   /** Try to put the sidebar view in Obsidian's left sidebar. Falls back to
    *  creating a new left leaf when none is available, and retries once briefly
-   *  (the sidebar may not expose a leaf yet on first layout). */
-  async ensureSidebarLeaf(): Promise<boolean> {
+   *  (the sidebar may not expose a leaf yet on first layout).
+   *  `reveal` decides whether the sidebar is pulled open: startup only plants
+   *  the tab (the trader chooses when to look at it), the command reveals. */
+  async ensureSidebarLeaf(reveal = true): Promise<boolean> {
     const tryOnce = async (): Promise<boolean> => {
       const existing = this.app.workspace.getLeavesOfType(TRADEBOOK_SIDEBAR_VIEW_TYPE);
       if (existing.length > 0) {
-        await this.app.workspace.revealLeaf(existing[0]);
+        if (reveal) await this.app.workspace.revealLeaf(existing[0]);
         return true;
       }
       const leftLeaf = this.app.workspace.getLeftLeaf?.(true);
       if (!leftLeaf) return false;
-      await leftLeaf.setViewState({ type: TRADEBOOK_SIDEBAR_VIEW_TYPE, active: true });
-      await this.app.workspace.revealLeaf(leftLeaf);
+      await leftLeaf.setViewState({ type: TRADEBOOK_SIDEBAR_VIEW_TYPE, active: false });
+      if (reveal) await this.app.workspace.revealLeaf(leftLeaf);
       return true;
     };
     if (await tryOnce()) return true;
