@@ -253,13 +253,16 @@ export class WeeklyReviewView extends ItemView {
     reviewCard.createDiv({ cls: "tj-strat-card-title", text: "Review" });
     reviewCard.createDiv({
       cls: "tj-weekly-hint",
-      text: "The five questions, answered with the week closed.",
+      text: "Written with the week closed — free form, yours.",
     });
     const reviewTa = reviewCard.createEl("textarea", { cls: "tj-strat-rules-input tj-weekly-ta" });
-    reviewTa.value = readSection(body, "Review");
-    if (!reviewTa.value.trim()) {
-      reviewTa.value = "### What worked\n\n\n### What didn't\n\n\n### Most profitable setups\n\n\n### Costly mistakes\n";
-    }
+    // Older notes carry the question headings the trader asked to drop — they
+    // are stripped from the editor, so the section is whatever they wrote.
+    reviewTa.value = readSection(body, "Review")
+      .split(/\r?\n/)
+      .filter((line) => !/^\s*###\s+(What worked|What didn't|Most profitable setups|Costly mistakes)\s*$/.test(line))
+      .join("\n")
+      .trim();
     this.wireSectionSave(reviewTa, "Review");
 
     // ---- 6. Performance and Trades, side by side ----

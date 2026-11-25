@@ -1058,7 +1058,7 @@ export default class TradebookPlugin extends Plugin {
       `---\ntype: weekly-review\nweek: ${weekKey}\nstart: ${week.start}\nend: ${week.end}\nchecklist_seeded: true\n---\n\n` +
       `# ${weekKey} Review\n\n## Performance (auto)\n\n${snapshot.join("\n")}\n\n` +
       `## Forecast\n\n\n## Key events\n\n\n## Checklist\n\n${DEFAULT_WEEKLY_CHECKLIST.map((t) => `- [ ] ${t}`).join("\n")}\n\n` +
-      `## Review\n\n### What worked\n\n\n### What didn't\n\n\n### Most profitable setups\n\n\n### Costly mistakes\n`;
+      `## Review\n`;
     try {
       return await this.app.vault.create(path, body);
     } catch (err) {
