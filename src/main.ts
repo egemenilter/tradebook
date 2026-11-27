@@ -943,6 +943,14 @@ export default class TradebookPlugin extends Plugin {
     this.tradeDetailOrigin = trade.from ?? { type: "tradelog" };
     const trades = await this.loadTradesExpanded();
     let full = trades.find((t) => t.id === trade.id);
+    if (!full) {
+      // A missed setup lives outside loadTrades() by design (it counts in
+      // nothing), but the ledger and the Home widget open it by this same
+      // door — so the door reads it before handing the view a bare ref.
+      try {
+        full = (await this.loadMissedTrades()).find((t) => t.id === trade.id) ?? undefined;
+      } catch { /* unreadable notes — the ref still opens the view */ }
+    }
     // Virtual legs have no file — open their base trade instead.
     if (full && isVirtualLeg(full)) {
       const base = trades.find((t) => !isLeg(t) && legBaseKey(t) === legBaseKey(full!));

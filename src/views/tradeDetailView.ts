@@ -180,6 +180,15 @@ export class TradeDetailView extends ItemView {
     // Any pending review edit belongs to the trade we are leaving — write it
     // before the view switches, or it is lost to the debounce.
     this.flushReviewSaves();
+    // A bare ref (an id and nothing else) can arrive for a trade that lives
+    // outside loadTrades() — a missed setup. Resolve it from its own reader
+    // before the page renders it, or the page reads "undefined".
+    if (!trade.date && !trade.symbol && trade.id) {
+      try {
+        const full = (await this.plugin.loadMissedTrades()).find((t) => t.id === trade.id);
+        if (full) trade = full;
+      } catch { /* unreadable — render what arrived */ }
+    }
     this._activePrint = 0;
     this.trade = trade;
     // Recompute the derived realized-points value from actual fills/scalars;

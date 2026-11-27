@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import { readFileSync } from 'node:fs';
 
 // The missed-setup feature: `type: missed` notes are written, read back and
 // kept out of every analytics population — the one guarantee the trader asked
@@ -47,3 +48,21 @@ test('missed-only input yields an empty population, not an error', () => {
   const { money, unique, counts } = scope.analyticsTrades([missed]);
   assert.deepEqual([money.length, unique.length, counts.length], [0, 0, 0]);
 });
+
+test('opening a missed setup resolves it from its own reader, never a bare ref', () => {
+  // The bug this pins: openTradeDetail searched loadTradesExpanded() only, and
+  // a missed setup is deliberately outside it — the detail page then rendered
+  // the bare {id} ref: "undefined" pair, no details, no screenshot.
+  const main = read('src/main.ts');
+  const open = main.slice(main.indexOf('async openTradeDetail('), main.indexOf('getTradesFolder(): string {'));
+  assert.match(open, /loadMissedTrades\(\)\)\.find\(\(t\) => t\.id === trade\.id\)/,
+    'the door reads the missed reader before falling back to the ref');
+  const detail = read('src/views/tradeDetailView.ts');
+  const setTrade = detail.slice(detail.indexOf('async setTrade(trade: Trade)'), detail.indexOf('private keydownHandler'));
+  assert.match(setTrade, /loadMissedTrades\(\)\)\.find\(\(t\) => t\.id === trade\.id\)/,
+    'the page also refuses to render a bare ref without asking its reader');
+});
+
+function read(rel) {
+  return readFileSync(new URL('../' + rel, import.meta.url), 'utf8');
+}
